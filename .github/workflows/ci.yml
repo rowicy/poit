@@ -25,12 +25,20 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # build:frontend needs Go to compile apps/app/wasm/filekind to WASM.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: apps/app/wasm/filekind/go.sum
+
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter poit-app typecheck
+      - run: pnpm --filter poit-app typecheck:frontend
       # Confirms the esbuild bundle infra/main.tf's cloudflare_workers_script
       # depends on actually builds; doesn't deploy anything (deploy is
       # `terraform apply`, run locally - see README.md).
       - run: pnpm --filter poit-app build
+      - run: pnpm --filter poit-app build:frontend
 
   cli:
     runs-on: ubuntu-latest

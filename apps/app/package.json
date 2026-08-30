@@ -4,13 +4,22 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:frontend": "vite --config frontend/vite.config.ts",
     "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "build:wasm": "GOOS=js GOARCH=wasm go build -C wasm/filekind -o ../../frontend/public/wasm/filekind.wasm . && cp \"$(go env GOROOT)/lib/wasm/wasm_exec.js\" frontend/public/wasm/wasm_exec.js",
+    "build:frontend": "pnpm build:wasm && vite build --config frontend/vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "typecheck:frontend": "tsc --noEmit -p frontend/tsconfig.json"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
     "esbuild": "^0.28.1",
     "wrangler": "^4.0.0",
-    "@cloudflare/workers-types": "^4.20260101.0"
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "vite": "^7.0.0",
+    "vite-plugin-solid": "^2.11.0",
+    "vite-plugin-wasm": "^3.4.1",
+    "solid-js": "^1.9.5",
+    "solid-markdown-wasm": "^1.12.1"
   }
 }

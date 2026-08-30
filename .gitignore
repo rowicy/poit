@@ -1,6 +1,11 @@
 node_modules/
 dist/
 .wrangler/
+# Generated: pnpm --filter poit-app build (esbuild) / build:frontend (vite)
+apps/app/public/
+apps/app/frontend/public/wasm/*.wasm
+apps/app/frontend/public/wasm/wasm_exec.js
+apps/app/wasm/filekind/filekind.wasm
 *.tfstate
 *.tfstate.*
 .terraform/

@@ -18,7 +18,7 @@ Read `/Users/r/orca/ageage/ARCHITECTURE.md`. It lists the specific cross-compone
 
 ## How to check
 
-1. Read the changed files (or, on a full review, at minimum: `apps/app/src/index.ts`, `apps/app/src/store.ts`, `apps/app/src/access.ts`, `apps/app/public/assets/app.js`, `cli/poit/cmd/client.go`, `cli/poit/cmd/share.go`, `infra/main.tf`, `apps/app/wrangler.jsonc`).
+1. Read the changed files (or, on a full review, at minimum: `apps/app/src/index.ts`, `apps/app/src/store.ts`, `apps/app/src/access.ts`, `apps/app/src/mime.ts`, `apps/app/src/metadata.ts`, `apps/app/frontend/src/lib/api.ts`, `apps/app/frontend/src/pages/Home.tsx`, `cli/poit/cmd/client.go`, `cli/poit/cmd/share.go`, `infra/main.tf`, `apps/app/wrangler.jsonc`, `.github/workflows/ci.yml`).
 2. For each contract in ARCHITECTURE.md's "三者間の契約" section, verify both/all sides still match. Don't just pattern-match names — trace the actual value (e.g. confirm the TTL in `store.ts` and the lifecycle rule's `max_age` in `main.tf` are the same number of seconds, not just that both exist).
 3. Only report a finding if you can point to two concrete locations (file:line each) that now disagree, or a location that assumes something no longer true elsewhere. Vague "this could be inconsistent" without a concrete pair is not a finding.
 

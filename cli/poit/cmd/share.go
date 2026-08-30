@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	filekind "github.com/riiimparm/is-md-or-html-or-text"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +36,8 @@ func shareCmd() *cobra.Command {
 			if public {
 				visibility = "public"
 			}
+
+			fmt.Fprintf(cmd.ErrOrStderr(), "detected: %s\n", filekind.Detect(content))
 
 			url, err := createArtifact(artifactRequest{
 				Content:    string(content),

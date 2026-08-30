@@ -1,4 +1,5 @@
 import { detectMime } from "./mime";
+import { extractInfo } from "./metadata";
 import { verifyAccess } from "./access";
 import {
   type ArtifactMeta,
@@ -90,15 +91,19 @@ async function handleApi(
       id = crypto.randomUUID();
     }
     const persist = body.persist ?? false;
+    const mime = detectMime(body.content);
+    const info = await extractInfo(mime, body.content);
     const meta: ArtifactMeta = {
       id,
       filename: body.filename ?? id,
-      mime: detectMime(body.content),
+      mime,
       visibility: body.visibility === "public" ? "public" : "private",
       persist,
       owner: identity.email,
       createdAt: new Date().toISOString(),
       expiresAt: expiresAtFor(persist),
+      title: info.title,
+      excerpt: info.excerpt,
     };
     await putArtifact(env.ARTIFACTS, env.METADATA, meta, body.content);
     return json({ artifact: meta, url: `${url.origin}/artifact/${id}` }, { status: 201 });
@@ -129,18 +134,22 @@ async function handleApi(
       if (!body) return json({ error: "invalid JSON body" }, { status: 400 });
 
       const content = typeof body.content === "string" && body.content ? body.content : existing.content;
+      const contentChanged = content !== existing.content;
       const persist = body.persist ?? existing.meta.persist;
       const visibility =
         body.visibility === "public" || body.visibility === "private"
           ? body.visibility
           : existing.meta.visibility;
+      const mime = contentChanged ? detectMime(content) : existing.meta.mime;
+      const info = contentChanged ? await extractInfo(mime, content) : null;
       const meta: ArtifactMeta = {
         ...existing.meta,
         filename: body.filename ?? existing.meta.filename,
-        mime: content !== existing.content ? detectMime(content) : existing.meta.mime,
+        mime,
         visibility,
         persist,
         expiresAt: expiresAtFor(persist),
+        ...(info ? { title: info.title, excerpt: info.excerpt } : {}),
       };
       await putArtifact(env.ARTIFACTS, env.METADATA, meta, content, existing.meta.persist);
       ctx.waitUntil(caches.default.delete(rawCacheKey(url.origin, id)));

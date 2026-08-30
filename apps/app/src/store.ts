@@ -11,6 +11,10 @@ export interface ArtifactMeta {
   owner: string;
   createdAt: string;
   expiresAt?: string;
+  /** First heading/<title> found in the content, if any. */
+  title?: string;
+  /** Leading body text (tags/headings stripped), truncated. */
+  excerpt?: string;
 }
 
 // Keep in sync with infra/main.tf's R2 lifecycle rule max_age.
