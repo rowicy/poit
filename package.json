@@ -1,0 +1,9 @@
+{
+  "name": "ageage",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter ageage-app dev",
+    "deploy": "pnpm --filter ageage-app deploy",
+    "typecheck": "pnpm --filter ageage-app typecheck"
+  }
+}
