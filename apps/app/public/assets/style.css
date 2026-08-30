@@ -98,12 +98,14 @@ body {
 .file-picker {
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 1.125rem;
+  line-height: 1;
 }
 
 .file-picker:hover {
@@ -154,6 +156,16 @@ input[type="text"] {
   border-radius: var(--radius);
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
+}
+
+.slug-input {
+  text-transform: uppercase;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.slug-input::placeholder {
+  text-transform: none;
+  font-family: inherit;
 }
 
 .form-actions {
@@ -239,6 +251,8 @@ select:focus-visible,
 }
 
 .artifact-list li {
+  display: flex;
+  align-items: center;
   border-bottom: 1px solid hsl(var(--border));
 }
 
@@ -247,6 +261,8 @@ select:focus-visible,
 }
 
 .artifact-link {
+  flex: 1;
+  min-width: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -274,6 +290,69 @@ select:focus-visible,
   background: hsl(var(--muted));
   border-radius: 9999px;
   padding: 0.125rem 0.625rem;
+}
+
+.item-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menu-trigger {
+  background: none;
+  border: 1px solid transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 1.125rem;
+  line-height: 1;
+  padding: 0.375rem 0.625rem;
+}
+
+.menu-trigger:hover {
+  background: hsl(var(--accent));
+  border-color: hsl(var(--border));
+}
+
+.menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 10;
+  flex-direction: column;
+  min-width: 8rem;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 0.25rem;
+}
+
+.item-menu.open .menu-popover {
+  display: flex;
+}
+
+.menu-popover button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-radius: calc(var(--radius) - 2px);
+  font-weight: 400;
+}
+
+.menu-popover button:hover {
+  background: hsl(var(--accent));
+}
+
+.menu-popover button.danger {
+  color: hsl(var(--destructive));
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 0.25rem;
+  width: 100%;
 }
 
 .empty-state {

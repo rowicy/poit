@@ -11,20 +11,25 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
+locals {
+  hostname = "poit.rowicy.com"
+}
+
 resource "cloudflare_r2_bucket" "artifacts" {
   account_id = var.cloudflare_account_id
-  name       = "ageage-artifacts"
+  name       = "poit-artifacts"
   location   = "apac"
 }
 
 resource "cloudflare_workers_kv_namespace" "metadata" {
   account_id = var.cloudflare_account_id
-  title      = "ageage-metadata"
+  title      = "poit-metadata"
 }
 
 # Non-persisted artifact bodies live under the "ephemeral/" prefix (see
-# store.ts) and are deleted here after 24h, matching the KV metadata's
-# expirationTtl - no cron/list-scan needed for either store.
+# store.ts) and are deleted here after 90 days, matching the KV metadata's
+# expirationTtl and store.ts's DEFAULT_TTL_SECONDS - no cron/list-scan
+# needed for either store.
 resource "cloudflare_r2_bucket_lifecycle" "artifacts" {
   account_id  = var.cloudflare_account_id
   bucket_name = cloudflare_r2_bucket.artifacts.name
@@ -34,14 +39,14 @@ resource "cloudflare_r2_bucket_lifecycle" "artifacts" {
     enabled    = true
     conditions = { prefix = "ephemeral/" }
     delete_objects_transition = {
-      condition = { type = "Age", max_age = 86400 }
+      condition = { type = "Age", max_age = 90 * 24 * 60 * 60 }
     }
   }]
 }
 
 resource "cloudflare_zero_trust_access_service_token" "cli" {
   account_id = var.cloudflare_account_id
-  name       = "ageage-cli"
+  name       = "poit-cli"
 }
 
 resource "cloudflare_zero_trust_access_policy" "members_or_cli_allow" {
@@ -74,12 +79,12 @@ resource "cloudflare_zero_trust_access_policy" "bypass" {
 # network failure ("Load failed") rather than a readable 401/403.
 resource "cloudflare_zero_trust_access_application" "shell" {
   account_id       = var.cloudflare_account_id
-  name             = "ageage-shell"
+  name             = "poit-shell"
   type             = "self_hosted"
   session_duration = "24h"
 
   destinations = [
-    { uri = "ageage.rowicy.com/" },
+    { uri = "${local.hostname}/" },
   ]
 
   policies = [
@@ -94,16 +99,62 @@ resource "cloudflare_zero_trust_access_application" "shell" {
 # CF_Authorization cookie.
 resource "cloudflare_zero_trust_access_application" "artifact_public" {
   account_id       = var.cloudflare_account_id
-  name             = "ageage-artifact-public"
+  name             = "poit-artifact-public"
   type             = "self_hosted"
   session_duration = "24h"
 
   destinations = [
-    { uri = "ageage.rowicy.com/artifact" },
-    { uri = "ageage.rowicy.com/assets" },
+    { uri = "${local.hostname}/artifact" },
+    { uri = "${local.hostname}/assets" },
   ]
 
   policies = [
     { id = cloudflare_zero_trust_access_policy.bypass.id, precedence = 1 },
   ]
+}
+
+# The Worker script itself: deployed by Terraform (not `wrangler deploy`) so
+# the whole stack - bindings, static assets, routing, schedule - lives in one
+# place. Run `pnpm --filter poit-app build` first to produce dist/index.js
+# (esbuild-bundled from src/index.ts); `terraform apply` picks up content
+# changes via content_sha256.
+resource "cloudflare_workers_script" "app" {
+  account_id  = var.cloudflare_account_id
+  script_name = "poit"
+
+  main_module     = "index.js"
+  content_file    = "${path.module}/../apps/app/dist/index.js"
+  content_sha256  = filesha256("${path.module}/../apps/app/dist/index.js")
+  compatibility_date  = "2026-08-01"
+  compatibility_flags = ["nodejs_compat"]
+
+  assets = {
+    directory = "${path.module}/../apps/app/public"
+    config = {
+      not_found_handling = "single-page-application"
+      # Unlike wrangler, this provider does not auto-detect a physical
+      # public/_headers file - its contents must be passed explicitly here.
+      headers = file("${path.module}/../apps/app/public/_headers")
+    }
+  }
+
+  bindings = [
+    { name = "ARTIFACTS", type = "r2_bucket", bucket_name = cloudflare_r2_bucket.artifacts.name },
+    { name = "METADATA", type = "kv_namespace", namespace_id = cloudflare_workers_kv_namespace.metadata.id },
+    { name = "CF_ACCESS_TEAM_DOMAIN", type = "plain_text", text = "rowicy" },
+    { name = "CF_ACCESS_AUD", type = "secret_text", text = cloudflare_zero_trust_access_application.shell.aud },
+  ]
+}
+
+resource "cloudflare_workers_cron_trigger" "app" {
+  account_id  = var.cloudflare_account_id
+  script_name = cloudflare_workers_script.app.script_name
+  schedules   = [{ cron = "0 3 * * *" }]
+}
+
+resource "cloudflare_workers_custom_domain" "app" {
+  account_id = var.cloudflare_account_id
+  zone_id    = var.cloudflare_zone_id
+  hostname   = local.hostname
+  service    = cloudflare_workers_script.app.script_name
 }

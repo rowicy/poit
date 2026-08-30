@@ -7,7 +7,7 @@ dist/
 terraform.tfvars
 .env
 .DS_Store
-cli/ageage/ageage
+cli/poit/poit
 # Created by https://www.toptal.com/developers/gitignore/api/terraform,go,node
 # Edit at https://www.toptal.com/developers/gitignore?templates=terraform,go,node
 

@@ -1,4 +1,4 @@
-module github.com/rowicy/ageage/cli/ageage
+module github.com/rowicy/ageage/cli/poit
 
 go 1.24.5
 

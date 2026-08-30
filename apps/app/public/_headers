@@ -1,2 +1,6 @@
-/assets/*
+/assets/app.js
+  Cache-Control: public, max-age=3600
+/assets/style.css
+  Cache-Control: public, max-age=3600
+/assets/vendor/*
   Cache-Control: public, max-age=3600

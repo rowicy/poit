@@ -8,6 +8,8 @@ const DLP_PATTERNS = [
   { name: "電話番号", re: /\b0\d{1,4}-?\d{1,4}-?\d{3,4}\b/ },
 ];
 
+const SLUG_PATTERN = /^[A-Z0-9_-]{1,64}$/;
+
 function findSecrets(text) {
   return DLP_PATTERNS.filter((p) => p.re.test(text)).map((p) => p.name);
 }
@@ -70,8 +72,12 @@ function loadScript(src) {
 
 function header() {
   return el("header", { className: "site-header" }, [
-    el("a", { href: "/", className: "brand", textContent: "ageage" }),
+    el("a", { href: "/", className: "brand", textContent: "poit" }),
   ]);
+}
+
+function visibilityLabel(visibility) {
+  return visibility === "public" ? "公開" : "非公開";
 }
 
 async function renderHome() {
@@ -90,18 +96,37 @@ async function renderHome() {
   });
   const fileInput = el("input", { type: "file", id: "file-input", hidden: true });
   const fileNameLabel = el("span", { className: "file-name" });
+  const slugInput = el("input", {
+    type: "text",
+    className: "slug-input",
+    placeholder: "例: MY-DOC-1 (省略可)",
+    pattern: "[A-Za-z0-9_-]*",
+  });
+  slugInput.addEventListener("input", () => {
+    slugInput.value = slugInput.value.toUpperCase();
+  });
+
+  // Tracks the in-flight file read so the share handler can await it instead
+  // of racing it - selecting a file and clicking "共有する" immediately used
+  // to submit before readFileAsText() resolved, sending empty content.
+  let pendingFileLoad = Promise.resolve();
 
   async function loadFile(file) {
     if (contentInput.value.trim() && !confirm(`入力中のテキストを "${file.name}" の内容で置き換えますか?`)) {
       return;
     }
-    contentInput.value = await readFileAsText(file);
-    fileNameLabel.textContent = file.name;
+    try {
+      contentInput.value = await readFileAsText(file);
+      fileNameLabel.textContent = file.name;
+    } catch {
+      fileNameLabel.textContent = "";
+      status.replaceChildren(el("p", { className: "error", textContent: `${file.name} を読み込めませんでした` }));
+    }
   }
 
   fileInput.addEventListener("change", () => {
     const file = fileInput.files?.[0];
-    if (file) loadFile(file);
+    if (file) pendingFileLoad = loadFile(file);
   });
 
   const dropZone = el(
@@ -110,8 +135,8 @@ async function renderHome() {
     [
       contentInput,
       el("div", { className: "drop-zone-actions" }, [
-        el("label", { className: "file-picker", htmlFor: "file-input" }, [
-          document.createTextNode("📎 ファイルを選択"),
+        el("label", { className: "file-picker", htmlFor: "file-input", title: "ファイルを選択" }, [
+          document.createTextNode("📎"),
         ]),
         fileInput,
         fileNameLabel,
@@ -127,7 +152,7 @@ async function renderHome() {
     e.preventDefault();
     dropZone.classList.remove("drag-over");
     const file = e.dataTransfer?.files?.[0];
-    if (file) loadFile(file);
+    if (file) pendingFileLoad = loadFile(file);
   });
 
   const visibilitySelect = el("select", {}, [
@@ -145,9 +170,23 @@ async function renderHome() {
   }
 
   shareButton.addEventListener("click", async () => {
+    const slug = slugInput.value.trim();
+    if (slug && !SLUG_PATTERN.test(slug)) {
+      status.replaceChildren(
+        el("p", { className: "error", textContent: "カスタムURLは英大文字/数字/-/_のみ使用できます" })
+      );
+      return;
+    }
+
+    shareButton.disabled = true;
+    shareButton.textContent = "読み込み中...";
+    await pendingFileLoad;
+
     const content = contentInput.value;
     if (!content.trim()) {
       status.replaceChildren(el("p", { className: "error", textContent: "内容を入力してください" }));
+      shareButton.disabled = false;
+      shareButton.textContent = "共有する";
       return;
     }
 
@@ -156,10 +195,13 @@ async function renderHome() {
       const proceed = confirm(
         `機密情報の可能性がある文字列が見つかりました: ${hits.join(", ")}\nこのまま共有しますか?`
       );
-      if (!proceed) return;
+      if (!proceed) {
+        shareButton.disabled = false;
+        shareButton.textContent = "共有する";
+        return;
+      }
     }
 
-    shareButton.disabled = true;
     shareButton.textContent = "共有中...";
     try {
       const { url } = await api("/api/v1/artifact", {
@@ -167,6 +209,7 @@ async function renderHome() {
         body: JSON.stringify({
           content,
           filename: fileInput.files?.[0]?.name,
+          slug: slug || undefined,
           visibility: visibilitySelect.value,
           persist: persistCheckbox.checked,
         }),
@@ -184,6 +227,7 @@ async function renderHome() {
       contentInput.value = "";
       fileInput.value = "";
       fileNameLabel.textContent = "";
+      slugInput.value = "";
       await refreshList();
     } catch (err) {
       status.replaceChildren(el("p", { className: "error", textContent: String(err.message ?? err) }));
@@ -205,11 +249,15 @@ async function renderHome() {
         el("span", { className: "field-label", textContent: "公開設定" }),
         visibilitySelect,
       ]),
+      el("label", { className: "field" }, [
+        el("span", { className: "field-label", textContent: "カスタムURL" }),
+        slugInput,
+      ]),
       el("label", { className: "field checkbox-field" }, [
         persistCheckbox,
         el("span", {}, [
           document.createTextNode(" 永続化する"),
-          el("small", { className: "hint", textContent: "オフの場合は24時間後に自動削除されます" }),
+          el("small", { className: "hint", textContent: "オフの場合は90日後に自動削除されます" }),
         ]),
       ]),
     ]),
@@ -220,21 +268,109 @@ async function renderHome() {
     status,
   ]);
 
+  function closeAllMenus() {
+    for (const menu of list.querySelectorAll(".item-menu.open")) menu.classList.remove("open");
+  }
+  document.addEventListener("click", closeAllMenus);
+
+  async function startEdit(li, artifact) {
+    li.replaceChildren(el("p", { className: "hint", textContent: "読み込み中..." }));
+    let content;
+    try {
+      ({ content } = await api(`/artifact/${artifact.id}/raw`));
+    } catch (err) {
+      li.replaceChildren(el("p", { className: "error", textContent: String(err.message ?? err) }));
+      return;
+    }
+
+    const editContent = el("textarea", { className: "content-input", value: content, rows: 6 });
+    const editVisibility = el("select", {}, [
+      el("option", { value: "private", textContent: "プライベート (rowicy内)", selected: artifact.visibility === "private" }),
+      el("option", { value: "public", textContent: "パブリック (誰でも閲覧可)", selected: artifact.visibility === "public" }),
+    ]);
+    const editPersist = el("input", { type: "checkbox", checked: artifact.persist });
+    const editStatus = el("p", { className: "error" });
+
+    const saveButton = el("button", { className: "primary", textContent: "保存" });
+    const cancelButton = el("button", { className: "secondary", textContent: "キャンセル" });
+
+    saveButton.addEventListener("click", async () => {
+      saveButton.disabled = true;
+      try {
+        await api(`/api/v1/artifact/${artifact.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            content: editContent.value,
+            visibility: editVisibility.value,
+            persist: editPersist.checked,
+          }),
+        });
+        await refreshList();
+      } catch (err) {
+        editStatus.textContent = String(err.message ?? err);
+        saveButton.disabled = false;
+      }
+    });
+    cancelButton.addEventListener("click", () => refreshList());
+
+    li.replaceChildren(
+      el("div", { className: "edit-form" }, [
+        editContent,
+        el("div", { className: "form-row" }, [
+          el("label", { className: "field" }, [el("span", { className: "field-label", textContent: "公開設定" }), editVisibility]),
+          el("label", { className: "field checkbox-field" }, [editPersist, document.createTextNode(" 永続化する")]),
+        ]),
+        el("div", { className: "form-actions" }, [saveButton, cancelButton]),
+        editStatus,
+      ])
+    );
+  }
+
+  async function deleteArtifact(id) {
+    if (!confirm("このアーティファクトを削除しますか? この操作は取り消せません。")) return;
+    try {
+      await api(`/api/v1/artifact/${id}`, { method: "DELETE" });
+      await refreshList();
+    } catch (err) {
+      status.replaceChildren(el("p", { className: "error", textContent: String(err.message ?? err) }));
+    }
+  }
+
   function renderListItems(artifacts) {
     if (artifacts.length === 0) {
       return [el("p", { className: "empty-state", textContent: "まだ共有されたものはありません" })];
     }
-    return artifacts.map((a) =>
-      el("li", {}, [
+    return artifacts.map((a) => {
+      const menu = el("div", { className: "item-menu" }, [
+        el("button", {
+          className: "menu-trigger",
+          textContent: "⋯",
+          "aria-label": "操作メニュー",
+          onclick: (e) => {
+            e.stopPropagation();
+            const wasOpen = menu.classList.contains("open");
+            closeAllMenus();
+            if (!wasOpen) menu.classList.add("open");
+          },
+        }),
+        el("div", { className: "menu-popover" }, [
+          el("button", { textContent: "編集", onclick: () => startEdit(li, a) }),
+          el("button", { className: "danger", textContent: "削除", onclick: () => deleteArtifact(a.id) }),
+        ]),
+      ]);
+
+      const li = el("li", {}, [
         el("a", { href: `/artifact/${a.id}`, className: "artifact-link" }, [
           el("span", { className: "artifact-filename", textContent: a.filename }),
           el("span", {
             className: "badge",
-            textContent: `${a.mime} · ${a.visibility === "public" ? "公開" : "非公開"}${a.persist ? " · 永続" : ""}`,
+            textContent: `${a.mime} · ${visibilityLabel(a.visibility)}${a.persist ? " · 永続" : ""}`,
           }),
         ]),
-      ])
-    );
+        menu,
+      ]);
+      return li;
+    });
   }
 
   const list = el("ul", { className: "artifact-list" }, renderListItems(artifacts));
@@ -257,7 +393,7 @@ async function renderArtifact(id) {
     return;
   }
 
-  document.title = `${artifact.filename} - ageage`;
+  document.title = `${artifact.filename} - poit`;
 
   const rawMimeType = { md: "text/markdown", html: "text/html", txt: "text/plain" }[artifact.mime] ?? "text/plain";
   const rawBlobUrl = URL.createObjectURL(new Blob([content], { type: `${rawMimeType};charset=utf-8` }));
@@ -265,7 +401,7 @@ async function renderArtifact(id) {
     el("span", { className: "artifact-filename", textContent: artifact.filename }),
     el("span", {
       className: "badge",
-      textContent: `${artifact.mime} · ${artifact.visibility === "public" ? "公開" : "非公開"}`,
+      textContent: `${artifact.mime} · ${visibilityLabel(artifact.visibility)}`,
     }),
     el("div", { className: "artifact-actions" }, [
       el("button", {

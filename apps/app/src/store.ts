@@ -13,7 +13,8 @@ export interface ArtifactMeta {
   expiresAt?: string;
 }
 
-const DEFAULT_TTL_SECONDS = 24 * 60 * 60;
+// Keep in sync with infra/main.tf's R2 lifecycle rule max_age.
+export const DEFAULT_TTL_SECONDS = 90 * 24 * 60 * 60;
 const KV_MIN_TTL_SECONDS = 60;
 
 function contentKeyFor(id: string, persist: boolean): string {

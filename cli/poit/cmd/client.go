@@ -12,6 +12,7 @@ import (
 type artifactRequest struct {
 	Content    string `json:"content"`
 	Filename   string `json:"filename,omitempty"`
+	Slug       string `json:"slug,omitempty"`
 	Visibility string `json:"visibility"`
 	Persist    bool   `json:"persist"`
 }
@@ -22,13 +23,13 @@ type artifactResponse struct {
 }
 
 func apiURL() string {
-	if v := os.Getenv("AGEAGE_API_URL"); v != "" {
+	if v := os.Getenv("POIT_API_URL"); v != "" {
 		return v
 	}
 	return defaultAPIURL
 }
 
-// createArtifact posts content to the ageage API and returns the shareable URL.
+// createArtifact posts content to the poit API and returns the shareable URL.
 //
 // Authentication is handled by Cloudflare Access: a Service Token issued for
 // the CLI is sent as CF-Access-Client-Id/Secret headers, which Access
@@ -46,10 +47,10 @@ func createArtifact(req artifactRequest) (string, error) {
 	}
 	httpReq.Header.Set("content-type", "application/json")
 
-	clientID := os.Getenv("AGEAGE_CF_ACCESS_CLIENT_ID")
-	clientSecret := os.Getenv("AGEAGE_CF_ACCESS_CLIENT_SECRET")
+	clientID := os.Getenv("POIT_CF_ACCESS_CLIENT_ID")
+	clientSecret := os.Getenv("POIT_CF_ACCESS_CLIENT_SECRET")
 	if clientID == "" || clientSecret == "" {
-		return "", fmt.Errorf("AGEAGE_CF_ACCESS_CLIENT_ID / AGEAGE_CF_ACCESS_CLIENT_SECRET must be set")
+		return "", fmt.Errorf("POIT_CF_ACCESS_CLIENT_ID / POIT_CF_ACCESS_CLIENT_SECRET must be set")
 	}
 	httpReq.Header.Set("CF-Access-Client-Id", clientID)
 	httpReq.Header.Set("CF-Access-Client-Secret", clientSecret)

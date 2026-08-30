@@ -1,9 +1,9 @@
 {
-  "name": "ageage",
+  "name": "poit",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter ageage-app dev",
-    "deploy": "pnpm --filter ageage-app deploy",
-    "typecheck": "pnpm --filter ageage-app typecheck"
+    "dev": "pnpm --filter poit-app dev",
+    "build": "pnpm --filter poit-app build",
+    "typecheck": "pnpm --filter poit-app typecheck"
   }
 }

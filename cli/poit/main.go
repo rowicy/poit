@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rowicy/ageage/cli/ageage/cmd"
+	"github.com/rowicy/ageage/cli/poit/cmd"
 )
 
 func main() {

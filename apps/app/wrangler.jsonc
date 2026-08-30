@@ -1,6 +1,9 @@
 {
+  // Local development only ("wrangler dev"). Actual deployment is managed
+  // entirely by Terraform (see infra/main.tf's cloudflare_workers_script) -
+  // this file is never used to deploy.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ageage",
+  "name": "poit",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -10,7 +13,7 @@
     "not_found_handling": "single-page-application"
   },
   "r2_buckets": [
-    { "binding": "ARTIFACTS", "bucket_name": "ageage-artifacts" }
+    { "binding": "ARTIFACTS", "bucket_name": "poit-artifacts" }
   ],
   "kv_namespaces": [
     { "binding": "METADATA", "id": "f61ec4f90da0410992258ead50b44c9d" }
@@ -20,8 +23,5 @@
   },
   "vars": {
     "CF_ACCESS_TEAM_DOMAIN": "rowicy"
-  },
-  "routes": [
-    { "pattern": "ageage.rowicy.com", "custom_domain": true }
-  ]
+  }
 }

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/app/**"
+      - "cli/poit/**"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/ci.yml"
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter poit-app typecheck
+      # Confirms the esbuild bundle infra/main.tf's cloudflare_workers_script
+      # depends on actually builds; doesn't deploy anything (deploy is
+      # `terraform apply`, run locally - see README.md).
+      - run: pnpm --filter poit-app build
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: cli/poit/go.sum
+      - run: go build ./...
+        working-directory: cli/poit
+      - run: go vet ./...
+        working-directory: cli/poit

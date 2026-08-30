@@ -21,11 +21,13 @@ export interface Env {
 interface ArtifactWriteBody {
   content?: string;
   filename?: string;
+  slug?: string;
   visibility?: "public" | "private";
   persist?: boolean;
 }
 
 const NO_STORE = { "cache-control": "private, no-store" };
+const SLUG_PATTERN = /^[A-Z0-9_-]{1,64}$/;
 
 function json(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -75,7 +77,18 @@ async function handleApi(
       return json({ error: "content is required" }, { status: 400 });
     }
 
-    const id = crypto.randomUUID();
+    let id: string;
+    if (body.slug !== undefined) {
+      if (!SLUG_PATTERN.test(body.slug)) {
+        return json({ error: "slug must match [A-Z0-9_-] (1-64 chars)" }, { status: 400 });
+      }
+      if (await getArtifactMeta(env.METADATA, body.slug)) {
+        return json({ error: "slug already in use" }, { status: 409 });
+      }
+      id = body.slug;
+    } else {
+      id = crypto.randomUUID();
+    }
     const persist = body.persist ?? false;
     const meta: ArtifactMeta = {
       id,
