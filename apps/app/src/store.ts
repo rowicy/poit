@@ -14,67 +14,50 @@ export interface ArtifactMeta {
 }
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
-const PREFIX = "artifacts/";
 
-function keyFor(id: string): string {
-  return `${PREFIX}${id}`;
+function contentKeyFor(id: string): string {
+  return `artifacts/${id}`;
 }
 
-function metaToCustomMetadata(meta: ArtifactMeta): Record<string, string> {
-  return {
-    filename: meta.filename,
-    mime: meta.mime,
-    visibility: meta.visibility,
-    persist: String(meta.persist),
-    owner: meta.owner,
-    createdAt: meta.createdAt,
-    ...(meta.expiresAt ? { expiresAt: meta.expiresAt } : {}),
-  };
-}
-
-function customMetadataToMeta(id: string, custom: Record<string, string>): ArtifactMeta {
-  return {
-    id,
-    filename: custom.filename ?? "untitled",
-    mime: (custom.mime as ArtifactMime) ?? "txt",
-    visibility: (custom.visibility as Visibility) ?? "private",
-    persist: custom.persist === "true",
-    owner: custom.owner ?? "",
-    createdAt: custom.createdAt ?? new Date(0).toISOString(),
-    expiresAt: custom.expiresAt,
-  };
-}
-
-export async function putArtifact(bucket: R2Bucket, meta: ArtifactMeta, content: string): Promise<void> {
-  await bucket.put(keyFor(meta.id), content, { customMetadata: metaToCustomMetadata(meta) });
+export async function putArtifact(
+  bucket: R2Bucket,
+  kv: KVNamespace,
+  meta: ArtifactMeta,
+  content: string
+): Promise<void> {
+  await bucket.put(contentKeyFor(meta.id), content);
+  await kv.put(meta.id, JSON.stringify(meta), { metadata: meta });
 }
 
 export async function getArtifact(
   bucket: R2Bucket,
+  kv: KVNamespace,
   id: string
 ): Promise<{ meta: ArtifactMeta; content: string } | null> {
-  const obj = await bucket.get(keyFor(id));
+  const rawMeta = await kv.get(id);
+  if (!rawMeta) return null;
+  const obj = await bucket.get(contentKeyFor(id));
   if (!obj) return null;
-  const meta = customMetadataToMeta(id, (obj.customMetadata ?? {}) as Record<string, string>);
-  return { meta, content: await obj.text() };
+  return { meta: JSON.parse(rawMeta) as ArtifactMeta, content: await obj.text() };
 }
 
-export async function listArtifacts(bucket: R2Bucket): Promise<ArtifactMeta[]> {
+export async function listArtifacts(kv: KVNamespace): Promise<ArtifactMeta[]> {
   const result: ArtifactMeta[] = [];
   let cursor: string | undefined;
-  do {
-    const page: R2Objects = await bucket.list({ prefix: PREFIX, cursor, include: ["customMetadata"] });
-    for (const obj of page.objects) {
-      const id = obj.key.slice(PREFIX.length);
-      result.push(customMetadataToMeta(id, (obj.customMetadata ?? {}) as Record<string, string>));
+  for (;;) {
+    const page = await kv.list<ArtifactMeta>({ cursor });
+    for (const key of page.keys) {
+      if (key.metadata) result.push(key.metadata);
     }
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
+    if (page.list_complete) break;
+    cursor = page.cursor;
+  }
   return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export async function deleteArtifact(bucket: R2Bucket, id: string): Promise<void> {
-  await bucket.delete(keyFor(id));
+export async function deleteArtifact(bucket: R2Bucket, kv: KVNamespace, id: string): Promise<void> {
+  await bucket.delete(contentKeyFor(id));
+  await kv.delete(id);
 }
 
 export function expiresAtFor(persist: boolean): string | undefined {

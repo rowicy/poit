@@ -12,6 +12,9 @@
   "r2_buckets": [
     { "binding": "ARTIFACTS", "bucket_name": "ageage-artifacts" }
   ],
+  "kv_namespaces": [
+    { "binding": "METADATA", "id": "f61ec4f90da0410992258ead50b44c9d" }
+  ],
   "triggers": {
     "crons": ["0 3 * * *"]
   },

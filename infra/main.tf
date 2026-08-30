@@ -17,16 +17,14 @@ resource "cloudflare_r2_bucket" "artifacts" {
   location   = "apac"
 }
 
+resource "cloudflare_workers_kv_namespace" "metadata" {
+  account_id = var.cloudflare_account_id
+  title      = "ageage-metadata"
+}
+
 resource "cloudflare_zero_trust_access_service_token" "cli" {
   account_id = var.cloudflare_account_id
   name       = "ageage-cli"
-}
-
-resource "cloudflare_zero_trust_access_policy" "members_allow" {
-  account_id = var.cloudflare_account_id
-  name       = "allow-rowicy-members"
-  decision   = "allow"
-  include    = [for email in var.allowed_emails : { email = { email = email } }]
 }
 
 resource "cloudflare_zero_trust_access_policy" "members_or_cli_allow" {
@@ -47,8 +45,16 @@ resource "cloudflare_zero_trust_access_policy" "bypass" {
   include    = [{ everyone = {} }]
 }
 
-# Cloudflare Access path matching is prefix-based, so this "/" application
-# protects the entire domain by default (every path starts with "/").
+# Cloudflare Access path matching is prefix-based, so this single "/"
+# application protects the entire domain by default (every path starts with
+# "/") - the SPA shell, GET /api/v1/artifacts, and the artifact mutation
+# endpoints all fall under it. Keeping this as ONE application (one aud) is
+# important: a browser session authenticated against this app satisfies
+# every path under it with no further redirect. Splitting mutation endpoints
+# into a second Access Application (a separate aud) previously broke the
+# SPA's own fetch() calls - Access would silently redirect a same-origin XHR
+# through a cross-origin login page, which the browser reports as a plain
+# network failure ("Load failed") rather than a readable 401/403.
 resource "cloudflare_zero_trust_access_application" "shell" {
   account_id       = var.cloudflare_account_id
   name             = "ageage-shell"
@@ -60,14 +66,15 @@ resource "cloudflare_zero_trust_access_application" "shell" {
   ]
 
   policies = [
-    { id = cloudflare_zero_trust_access_policy.members_allow.id, precedence = 1 },
+    { id = cloudflare_zero_trust_access_policy.members_or_cli_allow.id, precedence = 1 },
   ]
 }
 
 # A more specific prefix overrides the root app above, so this reopens
-# /artifact/* (the artifact viewer page and its raw-content endpoint) to
-# external users with no login. Privacy for private artifacts is still
-# enforced by the Worker itself via the CF_Authorization cookie.
+# /artifact/* (the artifact viewer page and its raw-content endpoint) and
+# /assets/* (its JS/CSS) to external users with no login. Privacy for
+# private artifacts is still enforced by the Worker itself via the
+# CF_Authorization cookie.
 resource "cloudflare_zero_trust_access_application" "artifact_public" {
   account_id       = var.cloudflare_account_id
   name             = "ageage-artifact-public"
@@ -81,25 +88,5 @@ resource "cloudflare_zero_trust_access_application" "artifact_public" {
 
   policies = [
     { id = cloudflare_zero_trust_access_policy.bypass.id, precedence = 1 },
-  ]
-}
-
-# Exact-path application for the CLI's upload endpoint. This path is
-# POST-only in the API, so scoping Access to it doesn't affect the public
-# GET routes above. Lets the CLI authenticate with a Cloudflare Access
-# Service Token instead of an interactive login.
-resource "cloudflare_zero_trust_access_application" "cli_upload" {
-  account_id                = var.cloudflare_account_id
-  name                      = "ageage-cli-upload"
-  type                      = "self_hosted"
-  session_duration          = "24h"
-  service_auth_401_redirect = true
-
-  destinations = [
-    { uri = "ageage.rowicy.com/api/v1/artifact" },
-  ]
-
-  policies = [
-    { id = cloudflare_zero_trust_access_policy.members_or_cli_allow.id, precedence = 1 },
   ]
 }

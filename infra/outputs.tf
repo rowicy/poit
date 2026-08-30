@@ -1,9 +1,10 @@
 output "access_application_auds" {
-  description = "Comma-separated list to set as the ageage Worker's CF_ACCESS_AUD secret"
-  value = join(",", [
-    cloudflare_zero_trust_access_application.shell.aud,
-    cloudflare_zero_trust_access_application.cli_upload.aud,
-  ])
+  description = "Set this as the ageage Worker's CF_ACCESS_AUD secret"
+  value       = cloudflare_zero_trust_access_application.shell.aud
+}
+
+output "metadata_kv_namespace_id" {
+  value = cloudflare_workers_kv_namespace.metadata.id
 }
 
 output "cli_service_token_client_id" {

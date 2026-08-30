@@ -11,6 +11,7 @@ import {
 
 export interface Env {
   ARTIFACTS: R2Bucket;
+  METADATA: KVNamespace;
   ASSETS: Fetcher;
   CF_ACCESS_TEAM_DOMAIN: string;
   CF_ACCESS_AUD: string;
@@ -40,7 +41,7 @@ async function handleApi(request: Request, env: Env, pathname: string): Promise<
   if (pathname === "/api/v1/artifacts" && request.method === "GET") {
     const identity = await requireAuth(request, env);
     if (!identity) return json({ error: "unauthorized" }, { status: 403 });
-    return json({ artifacts: await listArtifacts(env.ARTIFACTS) });
+    return json({ artifacts: await listArtifacts(env.METADATA) });
   }
 
   if (pathname === "/api/v1/artifact" && request.method === "POST") {
@@ -62,7 +63,7 @@ async function handleApi(request: Request, env: Env, pathname: string): Promise<
       createdAt: new Date().toISOString(),
       expiresAt: expiresAtFor(persist),
     };
-    await putArtifact(env.ARTIFACTS, meta, body.content);
+    await putArtifact(env.ARTIFACTS, env.METADATA, meta, body.content);
     return json({ artifact: meta, url: `${url.origin}/artifact/${id}` }, { status: 201 });
   }
 
@@ -72,7 +73,7 @@ async function handleApi(request: Request, env: Env, pathname: string): Promise<
 
     const identity = await requireAuth(request, env);
     if (!identity?.email) return json({ error: "unauthorized" }, { status: 403 });
-    const existing = await getArtifact(env.ARTIFACTS, id);
+    const existing = await getArtifact(env.ARTIFACTS, env.METADATA, id);
     if (!existing) return json({ error: "not found" }, { status: 404 });
     if (existing.meta.owner !== identity.email) return json({ error: "forbidden" }, { status: 403 });
 
@@ -88,12 +89,12 @@ async function handleApi(request: Request, env: Env, pathname: string): Promise<
         persist,
         expiresAt: expiresAtFor(persist),
       };
-      await putArtifact(env.ARTIFACTS, meta, content);
+      await putArtifact(env.ARTIFACTS, env.METADATA, meta, content);
       return json({ artifact: meta });
     }
 
     if (request.method === "DELETE") {
-      await deleteArtifact(env.ARTIFACTS, id);
+      await deleteArtifact(env.ARTIFACTS, env.METADATA, id);
       return new Response(null, { status: 204 });
     }
   }
@@ -106,7 +107,7 @@ async function handleApi(request: Request, env: Env, pathname: string): Promise<
 // a public artifact with no login. Private artifacts still require a valid
 // identity, checked here by the Worker itself.
 async function handleArtifactRaw(request: Request, env: Env, id: string): Promise<Response> {
-  const existing = await getArtifact(env.ARTIFACTS, id);
+  const existing = await getArtifact(env.ARTIFACTS, env.METADATA, id);
   if (!existing) return json({ error: "not found" }, { status: 404 });
   if (existing.meta.visibility === "private") {
     const identity = await requireAuth(request, env);
@@ -137,11 +138,11 @@ export default {
   },
 
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
-    const artifacts = await listArtifacts(env.ARTIFACTS);
+    const artifacts = await listArtifacts(env.METADATA);
     const now = Date.now();
     for (const artifact of artifacts) {
       if (!artifact.persist && artifact.expiresAt && new Date(artifact.expiresAt).getTime() < now) {
-        await deleteArtifact(env.ARTIFACTS, artifact.id);
+        await deleteArtifact(env.ARTIFACTS, env.METADATA, artifact.id);
       }
     }
   },
