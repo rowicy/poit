@@ -1,0 +1,15 @@
+{
+  // Used only by vitest-pool-workers (see vitest.config.ts). Mirrors
+  // wrangler.jsonc's bindings but adds test-only auth vars so tests don't
+  // need real Cloudflare Access credentials.
+  "name": "poit-test",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "poit-artifacts-test" }],
+  "kv_namespaces": [{ "binding": "METADATA", "id": "test-metadata" }],
+  "vars": {
+    "CF_ACCESS_TEAM_DOMAIN": "test-team",
+    "CF_ACCESS_AUD": "test-aud"
+  }
+}

@@ -26,10 +26,14 @@ function base64UrlDecodeToString(input: string): string {
   return new TextDecoder().decode(base64UrlDecode(input));
 }
 
-async function getJwks(teamDomain: string, forceRefresh = false): Promise<Jwk[]> {
+async function getJwks(
+  teamDomain: string,
+  fetchImpl: typeof fetch,
+  forceRefresh = false
+): Promise<Jwk[]> {
   const cached = jwksCache.get(teamDomain);
   if (!forceRefresh && cached && Date.now() - cached.fetchedAt < JWKS_TTL_MS) return cached.keys;
-  const res = await fetch(`https://${teamDomain}.cloudflareaccess.com/cdn-cgi/access/certs`);
+  const res = await fetchImpl(`https://${teamDomain}.cloudflareaccess.com/cdn-cgi/access/certs`);
   if (!res.ok) throw new Error("failed to fetch cloudflare access certs");
   const body = (await res.json()) as { keys?: Jwk[] };
   const keys = body.keys ?? [];
@@ -54,7 +58,9 @@ export async function verifyAccess(
   request: Request,
   teamDomain: string,
   /** Comma-separated list of accepted `aud` values (one per Access Application). */
-  allowedAuds: string
+  allowedAuds: string,
+  /** Overridable for tests, so JWKS verification never needs a real network call. */
+  fetchImpl: typeof fetch = fetch
 ): Promise<AccessIdentity | null> {
   const token = extractToken(request);
   if (!token) return null;
@@ -79,12 +85,12 @@ export async function verifyAccess(
   const audList = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
   if (accepted.length === 0 || !audList.some((a) => accepted.includes(a))) return null;
 
-  let keys = await getJwks(teamDomain);
+  let keys = await getJwks(teamDomain, fetchImpl);
   let jwk = keys.find((k) => k.kid === header.kid);
   if (!jwk) {
     // Unknown kid: could be a just-rotated-in signing key, not necessarily
     // an invalid token. Force one bypass-cache refetch before rejecting.
-    keys = await getJwks(teamDomain, true);
+    keys = await getJwks(teamDomain, fetchImpl, true);
     jwk = keys.find((k) => k.kid === header.kid);
     if (!jwk) return null;
   }

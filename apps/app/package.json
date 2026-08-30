@@ -9,13 +9,16 @@
     "build:wasm": "GOOS=js GOARCH=wasm go build -C wasm/filekind -o ../../frontend/public/wasm/filekind.wasm . && cp \"$(go env GOROOT)/lib/wasm/wasm_exec.js\" frontend/public/wasm/wasm_exec.js",
     "build:frontend": "pnpm build:wasm && vite build --config frontend/vite.config.ts",
     "typecheck": "tsc --noEmit",
-    "typecheck:frontend": "tsc --noEmit -p frontend/tsconfig.json"
+    "typecheck:frontend": "tsc --noEmit -p frontend/tsconfig.json",
+    "test": "vitest run"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
     "esbuild": "^0.28.1",
     "wrangler": "^4.0.0",
     "@cloudflare/workers-types": "^4.20260101.0",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "vitest": "^4.1.11",
     "vite": "^7.0.0",
     "vite-plugin-solid": "^2.11.0",
     "vite-plugin-wasm": "^3.4.1",

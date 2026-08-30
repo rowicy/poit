@@ -33,6 +33,26 @@ const NO_STORE = { "cache-control": "private, no-store" };
 // cli/poit/cmd/share.go's slugPattern.
 const SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
 const VALID_MIMES = new Set(["md", "html", "txt"]);
+const MAX_CONTENT_LENGTH = 10 * 1024 * 1024; // 10MB, chars ~= bytes for typical md/html/txt uploads
+
+// ponytail: per-isolate in-memory fixed-window counter, not shared across
+// isolates/colos, so it only blunts a single client hammering a single
+// isolate. Upgrade to a KV- or Durable-Object-backed counter if a
+// distributed attacker needs to be stopped for real.
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 30;
+const rateLimitCounters = new Map<string, { count: number; windowStart: number }>();
+
+function isRateLimited(key: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitCounters.get(key);
+  if (!entry || now - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
+    rateLimitCounters.set(key, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count++;
+  return entry.count > RATE_LIMIT_MAX_REQUESTS;
+}
 
 function json(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -75,11 +95,15 @@ async function handleApi(
   if (pathname === "/api/v1/artifact" && request.method === "POST") {
     const identity = await requireAuth(request, env);
     if (!identity?.email) return json({ error: "unauthorized" }, { status: 403 });
+    if (isRateLimited(identity.email)) return json({ error: "too many requests" }, { status: 429 });
 
     const body = await parseJsonBody<ArtifactWriteBody>(request);
     if (!body) return json({ error: "invalid JSON body" }, { status: 400 });
     if (typeof body.content !== "string" || !body.content) {
       return json({ error: "content is required" }, { status: 400 });
+    }
+    if (body.content.length > MAX_CONTENT_LENGTH) {
+      return json({ error: "content too large" }, { status: 413 });
     }
 
     let id: string;
@@ -119,6 +143,9 @@ async function handleApi(
 
     const identity = await requireAuth(request, env);
     if (!identity?.email) return json({ error: "unauthorized" }, { status: 403 });
+    if ((request.method === "DELETE" || request.method === "PUT") && isRateLimited(identity.email)) {
+      return json({ error: "too many requests" }, { status: 429 });
+    }
 
     if (request.method === "DELETE") {
       const meta = await getArtifactMeta(env.METADATA, id);
@@ -136,6 +163,9 @@ async function handleApi(
 
       const body = await parseJsonBody<ArtifactWriteBody>(request);
       if (!body) return json({ error: "invalid JSON body" }, { status: 400 });
+      if (typeof body.content === "string" && body.content.length > MAX_CONTENT_LENGTH) {
+        return json({ error: "content too large" }, { status: 413 });
+      }
 
       const content = typeof body.content === "string" && body.content ? body.content : existing.content;
       const contentChanged = content !== existing.content;
@@ -192,6 +222,8 @@ async function handleArtifactRaw(
   if (existing.meta.visibility === "private") {
     const identity = await requireAuth(request, env);
     if (!identity) return json({ error: "unauthorized" }, { status: 403 });
+    // BOLA guard: being logged in isn't enough, this artifact must be yours.
+    if (identity.email !== existing.meta.owner) return json({ error: "forbidden" }, { status: 403 });
     return json({ artifact: existing.meta, content: existing.content });
   }
 
