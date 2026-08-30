@@ -76,6 +76,7 @@ resource "cloudflare_zero_trust_access_application" "artifact_public" {
 
   destinations = [
     { uri = "ageage.rowicy.com/artifact" },
+    { uri = "ageage.rowicy.com/assets" },
   ]
 
   policies = [
