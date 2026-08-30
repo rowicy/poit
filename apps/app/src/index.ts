@@ -25,10 +25,14 @@ interface ArtifactWriteBody {
   slug?: string;
   visibility?: "public" | "private";
   persist?: boolean;
+  mime?: "md" | "html" | "txt";
 }
 
 const NO_STORE = { "cache-control": "private, no-store" };
-const SLUG_PATTERN = /^[A-Z0-9_-]{1,64}$/;
+// Keep in sync with apps/app/frontend/src/pages/Home.tsx's SLUG_PATTERN and
+// cli/poit/cmd/share.go's slugPattern.
+const SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
+const VALID_MIMES = new Set(["md", "html", "txt"]);
 
 function json(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -81,7 +85,7 @@ async function handleApi(
     let id: string;
     if (body.slug !== undefined) {
       if (!SLUG_PATTERN.test(body.slug)) {
-        return json({ error: "slug must match [A-Z0-9_-] (1-64 chars)" }, { status: 400 });
+        return json({ error: "slug must match [a-z0-9_-] (1-64 chars)" }, { status: 400 });
       }
       if (await getArtifactMeta(env.METADATA, body.slug)) {
         return json({ error: "slug already in use" }, { status: 409 });
@@ -140,7 +144,11 @@ async function handleApi(
         body.visibility === "public" || body.visibility === "private"
           ? body.visibility
           : existing.meta.visibility;
-      const mime = contentChanged ? detectMime(content) : existing.meta.mime;
+      // An explicit mime in the request body is a manual override (e.g. the
+      // auto-detector guessed wrong); otherwise re-detect only if the
+      // content actually changed, else keep what's already stored.
+      const mimeOverride = body.mime && VALID_MIMES.has(body.mime) ? body.mime : undefined;
+      const mime = mimeOverride ?? (contentChanged ? detectMime(content) : existing.meta.mime);
       const info = contentChanged ? await extractInfo(mime, content) : null;
       const meta: ArtifactMeta = {
         ...existing.meta,

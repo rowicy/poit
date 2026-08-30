@@ -1,13 +1,8 @@
-import {
-  createSignal,
-  createResource,
-  For,
-  Show,
-  onCleanup,
-  type Component,
-} from "solid-js";
+import { createSignal, createEffect, createResource, For, Show, onCleanup, type Component } from "solid-js";
+import { createStore } from "solid-js/store";
 import {
   type ArtifactMeta,
+  type ArtifactMime,
   type Visibility,
   createArtifact,
   deleteArtifact,
@@ -17,8 +12,16 @@ import {
 import { detectMime } from "../lib/filekind";
 import OptionsMenu from "../components/OptionsMenu";
 import EditModal from "../components/EditModal";
+import ShareTrigger from "../components/ShareTrigger";
+import GuideModal from "../components/GuideModal";
+import Spinner from "../components/Spinner";
+import ArtifactRow from "../components/ArtifactRow";
 
 type Status = { kind: "error" | "success"; message: string; url?: string } | null;
+
+// Keep in sync with apps/app/src/index.ts's SLUG_PATTERN and
+// cli/poit/cmd/share.go's slugPattern.
+const SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
 
 async function copyToClipboard(text: string): Promise<boolean> {
   try {
@@ -29,48 +32,48 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-function visibilityLabel(v: Visibility): string {
-  return v === "public" ? "公開" : "非公開";
-}
-
 const Home: Component = () => {
-  const [artifacts, { refetch }] = createResource(async () => (await listArtifacts()).artifacts);
+  const [initial] = createResource(async () => (await listArtifacts()).artifacts);
+  const [store, setStore] = createStore<{ artifacts: ArtifactMeta[] }>({ artifacts: [] });
+
+  // Sync the one-time initial fetch into the store; every later mutation
+  // (create/edit/delete/settings change) patches the store directly instead
+  // of re-fetching, so unrelated rows (and their open dropdowns) never
+  // remount - see ARCHITECTURE.md's note on this bug.
+  createEffect(() => {
+    const data = initial();
+    if (data) setStore("artifacts", data);
+  });
 
   const [visibility, setVisibility] = createSignal<Visibility>("private");
   const [persist, setPersist] = createSignal(false);
   const [slug, setSlug] = createSignal("");
 
-  const [choosing, setChoosing] = createSignal(false);
-  const [dropFile, setDropFile] = createSignal<File | null>(null);
+  const [dropContent, setDropContent] = createSignal<{ name: string; content: string } | null>(null);
+  const [dropReading, setDropReading] = createSignal(false);
   const [sharing, setSharing] = createSignal(false);
   const [status, setStatus] = createSignal<Status>(null);
+  const [guideOpen, setGuideOpen] = createSignal(false);
 
   const [editing, setEditing] = createSignal<ArtifactMeta | null>(null);
-  const [menuOpenId, setMenuOpenId] = createSignal<string | null>(null);
 
   let fileInputRef: HTMLInputElement | undefined;
 
-  // Keep in sync with apps/app/src/index.ts's SLUG_PATTERN and
-  // cli/poit/cmd/share.go's slugPattern.
-  const SLUG_PATTERN = /^[A-Z0-9_-]{1,64}$/;
-
   async function submit(content: string, filename?: string) {
-    setChoosing(false);
-    setDropFile(null);
     if (!content.trim()) {
       setStatus({ kind: "error", message: "内容が空です" });
       return;
     }
     const trimmedSlug = slug().trim();
     if (trimmedSlug && !SLUG_PATTERN.test(trimmedSlug)) {
-      setStatus({ kind: "error", message: "カスタムURLは英大文字/数字/-/_のみ、1〜64文字で指定してください" });
+      setStatus({ kind: "error", message: "カスタムURLは英小文字/数字/-/_のみ、1〜64文字で指定してください" });
       return;
     }
     setSharing(true);
     setStatus(null);
     try {
       const kind = await detectMime(content).catch(() => null);
-      const { url } = await createArtifact(content, filename, {
+      const { artifact, url } = await createArtifact(content, filename, {
         visibility: visibility(),
         persist: persist(),
         slug: trimmedSlug || undefined,
@@ -84,7 +87,7 @@ const Home: Component = () => {
         url,
       });
       setSlug("");
-      await refetch();
+      setStore("artifacts", (list) => [artifact, ...list]);
     } catch (err) {
       setStatus({ kind: "error", message: String((err as Error).message ?? err) });
     } finally {
@@ -97,7 +100,6 @@ const Home: Component = () => {
       const text = await navigator.clipboard.readText();
       await submit(text);
     } catch {
-      setChoosing(false);
       setStatus({ kind: "error", message: "クリップボードの読み取りに失敗しました" });
     }
   }
@@ -109,16 +111,14 @@ const Home: Component = () => {
   async function onFileChosen(e: Event & { currentTarget: HTMLInputElement }) {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = "";
-    if (!file) {
-      setChoosing(false);
-      return;
-    }
+    if (!file) return;
     await submit(await file.text(), file.name);
   }
 
-  // Whole-page drag & drop: dropping anywhere shows a single "Share!"
-  // confirmation instead of submitting instantly, since a drop can happen
-  // by accident.
+  // Whole-page drag & drop. Content is read into a string the moment the
+  // drop happens (not deferred to the confirm click), so there is no async
+  // gap in which the file reference could go stale before Share is pressed.
+  const [dragActive, setDragActive] = createSignal(false);
   let dragDepth = 0;
   function onDragOver(e: DragEvent) {
     e.preventDefault();
@@ -126,50 +126,61 @@ const Home: Component = () => {
   function onDragEnter(e: DragEvent) {
     e.preventDefault();
     dragDepth++;
+    setDragActive(true);
   }
   function onDragLeave(e: DragEvent) {
     e.preventDefault();
     dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) setDragActive(false);
   }
-  function onDrop(e: DragEvent) {
+  async function onDrop(e: DragEvent) {
     e.preventDefault();
     dragDepth = 0;
+    setDragActive(false);
     const file = e.dataTransfer?.files?.[0];
-    if (file) setDropFile(file);
+    if (!file) return;
+    setDropReading(true);
+    try {
+      setDropContent({ name: file.name, content: await file.text() });
+    } finally {
+      setDropReading(false);
+    }
   }
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === "Escape") {
-      setChoosing(false);
-      setDropFile(null);
+      setDropContent(null);
+      setGuideOpen(false);
     }
   }
   document.addEventListener("keydown", onKeyDown);
   onCleanup(() => document.removeEventListener("keydown", onKeyDown));
 
-  function closeMenu() {
-    setMenuOpenId(null);
-  }
-  document.addEventListener("click", closeMenu);
-  onCleanup(() => document.removeEventListener("click", closeMenu));
-
   async function handleDelete(id: string) {
     if (!confirm("このアーティファクトを削除しますか? この操作は取り消せません。")) return;
     try {
       await deleteArtifact(id);
-      await refetch();
+      setStore("artifacts", (list) => list.filter((a) => a.id !== id));
     } catch (err) {
       setStatus({ kind: "error", message: String((err as Error).message ?? err) });
     }
   }
 
-  async function handleSettingsChange(a: ArtifactMeta, patch: { visibility?: Visibility; persist?: boolean }) {
+  async function handleSettingsChange(
+    id: string,
+    patch: { visibility?: Visibility; persist?: boolean; mime?: ArtifactMime }
+  ) {
     try {
-      await updateArtifact(a.id, patch);
-      await refetch();
+      await updateArtifact(id, patch);
+      setStore("artifacts", (a) => a.id === id, patch);
     } catch (err) {
       setStatus({ kind: "error", message: String((err as Error).message ?? err) });
     }
+  }
+
+  function handleEditSaved(updated: ArtifactMeta) {
+    setEditing(null);
+    setStore("artifacts", (a) => a.id === updated.id, updated);
   }
 
   return (
@@ -178,23 +189,45 @@ const Home: Component = () => {
         <a href="/" class="brand">
           poit
         </a>
+        <button type="button" class="ghost guide-link" onClick={() => setGuideOpen(true)}>
+          使い方
+        </button>
       </header>
 
       <input type="file" ref={fileInputRef} hidden onChange={onFileChosen} />
 
-      <section class="share-field">
-        <OptionsMenu
-          visibility={visibility()}
-          persist={persist()}
-          slug={slug()}
-          showSlug
-          onVisibilityChange={setVisibility}
-          onPersistChange={setPersist}
-          onSlugChange={setSlug}
-        />
-        <button type="button" class="primary share-button" disabled={sharing()} onClick={() => setChoosing(true)}>
-          {sharing() ? "共有中..." : "Share"}
-        </button>
+      <section class="share-field" classList={{ "drag-over": dragActive() }}>
+        <div class="drop-hint" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+            <path
+              d="M12 15V4m0 0 3.5 3.5M12 4 8.5 7.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          <span>ここにファイルをドラッグ&ドロップ</span>
+        </div>
+        <div class="share-stack">
+          <ShareTrigger sharing={sharing()} onClipboard={fromClipboard} onFile={fromFile} />
+          <OptionsMenu
+            visibility={visibility()}
+            persist={persist()}
+            slug={slug()}
+            showSlug
+            onVisibilityChange={setVisibility}
+            onPersistChange={setPersist}
+            onSlugChange={setSlug}
+          />
+        </div>
       </section>
 
       <Show when={status()}>
@@ -212,58 +245,17 @@ const Home: Component = () => {
 
       <section class="card artifact-list-card">
         <h2>アップロード済みアーティファクト</h2>
-        <Show when={!artifacts.loading} fallback={<p class="hint">読み込み中...</p>}>
-          <Show when={(artifacts() ?? []).length > 0} fallback={<p class="empty-state">まだ共有されたものはありません</p>}>
+        <Show when={!initial.loading} fallback={<Spinner label="読み込み中..." />}>
+          <Show when={store.artifacts.length > 0} fallback={<p class="empty-state">まだ共有されたものはありません</p>}>
             <ul class="artifact-list">
-              <For each={artifacts()}>
+              <For each={store.artifacts}>
                 {(a) => (
-                  <li>
-                    <a href={`/artifact/${a.id}`} class="artifact-link">
-                      <span class="artifact-filename">{a.title || a.filename}</span>
-                      <span class="badge">
-                        {a.mime} · {visibilityLabel(a.visibility)}
-                        {a.persist ? " · 永続" : ""}
-                      </span>
-                    </a>
-                    <div class="item-menu" classList={{ open: menuOpenId() === a.id }}>
-                      <button
-                        type="button"
-                        class="ghost menu-trigger"
-                        aria-label="操作メニュー"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpenId((cur) => (cur === a.id ? null : a.id));
-                        }}
-                      >
-                        ⋯
-                      </button>
-                      <div class="menu-popover" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditing(a);
-                            setMenuOpenId(null);
-                          }}
-                        >
-                          編集
-                        </button>
-                        <div class="menu-settings-row">
-                          <OptionsMenu
-                            visibility={a.visibility}
-                            persist={a.persist}
-                            slug=""
-                            showSlug={false}
-                            onVisibilityChange={(v) => handleSettingsChange(a, { visibility: v })}
-                            onPersistChange={(p) => handleSettingsChange(a, { persist: p })}
-                            onSlugChange={() => {}}
-                          />
-                        </div>
-                        <button type="button" class="danger" onClick={() => handleDelete(a.id)}>
-                          削除
-                        </button>
-                      </div>
-                    </div>
-                  </li>
+                  <ArtifactRow
+                    artifact={a}
+                    onEdit={setEditing}
+                    onDelete={handleDelete}
+                    onSettingsChange={handleSettingsChange}
+                  />
                 )}
               </For>
             </ul>
@@ -271,29 +263,29 @@ const Home: Component = () => {
         </Show>
       </section>
 
-      <Show when={choosing()}>
-        <div class="modal-backdrop" onClick={() => setChoosing(false)}>
-          <div class="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>共有する内容を選択</h2>
-            <div class="modal-actions">
-              <button type="button" class="secondary" onClick={fromClipboard}>
-                📋 From Clipboard
-              </button>
-              <button type="button" class="secondary" onClick={fromFile}>
-                📎 From File
-              </button>
-            </div>
+      <Show when={dropReading()}>
+        <div class="modal-backdrop">
+          <div class="modal">
+            <Spinner label="ファイルを読み込み中..." />
           </div>
         </div>
       </Show>
 
-      <Show when={dropFile()}>
+      <Show when={dropContent()}>
         {(file) => (
-          <div class="modal-backdrop" onClick={() => setDropFile(null)}>
+          <div class="modal-backdrop" onClick={() => setDropContent(null)}>
             <div class="modal" onClick={(e) => e.stopPropagation()}>
               <h2>"{file().name}" を共有しますか?</h2>
               <div class="modal-actions">
-                <button type="button" class="primary" onClick={async () => submit(await file().text(), file().name)}>
+                <button
+                  type="button"
+                  class="primary"
+                  onClick={() => {
+                    const f = file();
+                    setDropContent(null);
+                    submit(f.content, f.name);
+                  }}
+                >
                   Share!
                 </button>
               </div>
@@ -302,17 +294,12 @@ const Home: Component = () => {
         )}
       </Show>
 
+      <Show when={guideOpen()}>
+        <GuideModal onClose={() => setGuideOpen(false)} />
+      </Show>
+
       <Show when={editing()}>
-        {(a) => (
-          <EditModal
-            artifact={a()}
-            onClose={() => setEditing(null)}
-            onSaved={async () => {
-              setEditing(null);
-              await refetch();
-            }}
-          />
-        )}
+        {(a) => <EditModal artifact={a()} onClose={() => setEditing(null)} onSaved={handleEditSaved} />}
       </Show>
     </div>
   );

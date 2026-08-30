@@ -162,6 +162,8 @@ textarea {
 .options-menu {
   position: relative;
   display: inline-block;
+  /* Bridges the visual gap between trigger and popover so hover doesn't drop. */
+  padding-bottom: 0.5rem;
 }
 
 .options-trigger {
@@ -170,14 +172,29 @@ textarea {
   gap: 0.5rem;
 }
 
-.options-summary {
-  font-size: 0.8125rem;
+.options-icon {
+  display: inline-flex;
+  color: var(--muted-foreground);
+}
+
+.options-badges {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.options-badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--accent);
+  border-radius: 9999px;
+  padding: 0.0625rem 0.5rem;
 }
 
 .options-popover {
   position: absolute;
   top: 100%;
-  left: 0;
+  right: 0;
   z-index: 20;
   min-width: 14rem;
   background: var(--card);
@@ -186,6 +203,27 @@ textarea {
   box-shadow: 0 8px 24px rgba(14, 23, 42, 0.12);
   padding: 0.375rem;
   margin-top: 0.375rem;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.options-popover.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.share-stack .options-popover {
+  /* Centered under the pre-share trigger instead of right-anchored. */
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px) scale(0.98);
+}
+
+.share-stack .options-popover.open {
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .options-item {
@@ -239,7 +277,6 @@ textarea {
 
 .options-slug-row .slug-input {
   width: 9rem;
-  text-transform: uppercase;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8125rem;
   padding: 0.3rem 0.5rem;
@@ -253,6 +290,9 @@ textarea {
 }
 
 .site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 2rem;
 }
 
@@ -263,21 +303,99 @@ textarea {
   text-decoration: none;
 }
 
+.guide-link {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  padding: 0.375rem 0.75rem;
+}
+
 .share-field {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1.5rem;
   padding: 3rem 2rem;
   margin-bottom: 1.5rem;
   border: 1px dashed var(--border);
   border-radius: calc(var(--radius) * 2);
   background: var(--muted);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.share-field.drag-over {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+
+.drop-hint {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.share-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.share-trigger {
+  position: relative;
 }
 
 .share-button {
   font-size: 1.125rem;
   padding: 0.75rem 2.5rem;
+  min-width: 10rem;
+}
+
+.share-popover {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-6px) scale(0.96);
+  transform-origin: top center;
+  z-index: 20;
+  margin-top: 0.625rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(14, 23, 42, 0.16);
+  padding: 0.375rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.share-popover.open {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.share-popover button {
+  border: none;
+  background: none;
+  text-align: center;
+  padding: 0.625rem 0.75rem;
+  border-radius: calc(var(--radius) - 2px);
+  font-weight: 500;
+}
+
+.share-popover button:hover {
+  background: var(--accent);
 }
 
 .share-result {
@@ -335,8 +453,23 @@ textarea {
   color: var(--primary);
 }
 
-.artifact-filename {
+.artifact-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.artifact-title {
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-excerpt {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -557,4 +690,39 @@ textarea {
   max-width: 48rem;
   margin: 0 auto;
   padding: 5rem 1.5rem 4rem;
+}
+
+.spinner-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  padding: 1rem 0;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.guide-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }

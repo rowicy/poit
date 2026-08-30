@@ -55,7 +55,7 @@ export function createArtifact(
 
 export function updateArtifact(
   id: string,
-  body: { content?: string; visibility?: Visibility; persist?: boolean }
+  body: { content?: string; visibility?: Visibility; persist?: boolean; mime?: ArtifactMime }
 ): Promise<{ artifact: ArtifactMeta }> {
   return apiFetch(`/api/v1/artifact/${id}`, { method: "PUT", body: JSON.stringify(body) });
 }

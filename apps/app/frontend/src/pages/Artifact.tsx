@@ -1,5 +1,6 @@
 import { createResource, createSignal, createMemo, lazy, Show, For, Suspense, onCleanup, type Component } from "solid-js";
 import { getArtifactRaw } from "../lib/api";
+import Spinner from "../components/Spinner";
 
 // solid-markdown-wasm's WASM binary is very large (it bundles mermaid,
 // katex, and syntax-highlighting themes we don't use) - loaded only when an
@@ -112,7 +113,7 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
   });
 
   return (
-    <Show when={!data.loading} fallback={<p class="hint">読み込み中...</p>}>
+    <Show when={!data.loading} fallback={<Spinner label="読み込み中..." />}>
       <Show
         when={!data.error}
         fallback={<p class="error">{data.error ? String(data.error.message ?? data.error) : "エラー"}</p>}
@@ -184,12 +185,12 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
               </div>
 
               <div class="md-content" ref={contentRef}>
-                <Suspense fallback={<p class="hint">読み込み中...</p>}>
+                <Suspense fallback={<Spinner label="読み込み中..." />}>
                   <MarkdownRenderer
                     markdown={currentMarkdown()}
                     theme="nord"
                     onLoaded={collectHeadings}
-                    fallback={<p class="hint">レンダリング中...</p>}
+                    fallback={<Spinner label="レンダリング中..." />}
                   />
                 </Suspense>
               </div>

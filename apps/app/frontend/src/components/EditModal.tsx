@@ -1,10 +1,11 @@
 import { createResource, createSignal, Show, type Component } from "solid-js";
 import { type ArtifactMeta, getArtifactRaw, updateArtifact } from "../lib/api";
+import Spinner from "./Spinner";
 
 export interface EditModalProps {
   artifact: ArtifactMeta;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updated: ArtifactMeta) => void;
 }
 
 const EditModal: Component<EditModalProps> = (props) => {
@@ -19,8 +20,8 @@ const EditModal: Component<EditModalProps> = (props) => {
     setSaving(true);
     setError(null);
     try {
-      await updateArtifact(props.artifact.id, { content: value });
-      props.onSaved();
+      const { artifact } = await updateArtifact(props.artifact.id, { content: value });
+      props.onSaved(artifact);
     } catch (err) {
       setError(String((err as Error).message ?? err));
     } finally {
@@ -32,7 +33,7 @@ const EditModal: Component<EditModalProps> = (props) => {
     <div class="modal-backdrop" onClick={props.onClose}>
       <div class="modal edit-modal" onClick={(e) => e.stopPropagation()}>
         <h2>編集: {props.artifact.filename}</h2>
-        <Show when={!raw.loading} fallback={<p class="hint">読み込み中...</p>}>
+        <Show when={!raw.loading} fallback={<Spinner label="読み込み中..." />}>
           <textarea
             class="edit-textarea"
             rows={16}

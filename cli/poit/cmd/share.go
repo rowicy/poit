@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var slugPattern = regexp.MustCompile(`^[A-Z0-9_-]{1,64}$`)
+var slugPattern = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 
 func shareCmd() *cobra.Command {
 	var public bool
@@ -29,7 +29,7 @@ func shareCmd() *cobra.Command {
 			}
 
 			if slug != "" && !slugPattern.MatchString(slug) {
-				return fmt.Errorf("--name must match [A-Z0-9_-], got %q", slug)
+				return fmt.Errorf("--name must match [a-z0-9_-], got %q", slug)
 			}
 
 			visibility := "private"
@@ -57,7 +57,7 @@ func shareCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&public, "public", false, "make the artifact publicly viewable (default: private, shared within rowicy)")
 	cmd.Flags().BoolVar(&persist, "persist", false, "keep the artifact indefinitely (default: expires after 90 days)")
-	cmd.Flags().StringVar(&slug, "name", "", "custom share URL id, must match [A-Z0-9_-] (default: a random id)")
+	cmd.Flags().StringVar(&slug, "name", "", "custom share URL id, must match [a-z0-9_-] (default: a random id)")
 
 	return cmd
 }
