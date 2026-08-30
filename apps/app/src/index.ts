@@ -5,6 +5,7 @@ import {
   deleteArtifact,
   expiresAtFor,
   getArtifact,
+  getArtifactMeta,
   listArtifacts,
   putArtifact,
 } from "./store";
@@ -24,10 +25,12 @@ interface ArtifactWriteBody {
   persist?: boolean;
 }
 
+const NO_STORE = { "cache-control": "private, no-store" };
+
 function json(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
     ...init,
-    headers: { "content-type": "application/json", ...(init.headers ?? {}) },
+    headers: { "content-type": "application/json", ...NO_STORE, ...(init.headers ?? {}) },
   });
 }
 
@@ -35,21 +38,42 @@ function requireAuth(request: Request, env: Env) {
   return verifyAccess(request, env.CF_ACCESS_TEAM_DOMAIN, env.CF_ACCESS_AUD);
 }
 
-async function handleApi(request: Request, env: Env, pathname: string): Promise<Response> {
+function rawCacheKey(origin: string, id: string): Request {
+  return new Request(`${origin}/artifact/${id}/raw`);
+}
+
+async function parseJsonBody<T>(request: Request): Promise<T | null> {
+  try {
+    return await request.json<T>();
+  } catch {
+    return null;
+  }
+}
+
+async function handleApi(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  pathname: string
+): Promise<Response> {
   const url = new URL(request.url);
 
   if (pathname === "/api/v1/artifacts" && request.method === "GET") {
     const identity = await requireAuth(request, env);
-    if (!identity) return json({ error: "unauthorized" }, { status: 403 });
-    return json({ artifacts: await listArtifacts(env.METADATA) });
+    if (!identity?.email) return json({ error: "unauthorized" }, { status: 403 });
+    const artifacts = await listArtifacts(env.METADATA);
+    return json({ artifacts: artifacts.filter((a) => a.owner === identity.email) });
   }
 
   if (pathname === "/api/v1/artifact" && request.method === "POST") {
     const identity = await requireAuth(request, env);
     if (!identity?.email) return json({ error: "unauthorized" }, { status: 403 });
 
-    const body = await request.json<ArtifactWriteBody>();
-    if (!body.content) return json({ error: "content is required" }, { status: 400 });
+    const body = await parseJsonBody<ArtifactWriteBody>(request);
+    if (!body) return json({ error: "invalid JSON body" }, { status: 400 });
+    if (typeof body.content !== "string" || !body.content) {
+      return json({ error: "content is required" }, { status: 400 });
+    }
 
     const id = crypto.randomUUID();
     const persist = body.persist ?? false;
@@ -73,29 +97,41 @@ async function handleApi(request: Request, env: Env, pathname: string): Promise<
 
     const identity = await requireAuth(request, env);
     if (!identity?.email) return json({ error: "unauthorized" }, { status: 403 });
-    const existing = await getArtifact(env.ARTIFACTS, env.METADATA, id);
-    if (!existing) return json({ error: "not found" }, { status: 404 });
-    if (existing.meta.owner !== identity.email) return json({ error: "forbidden" }, { status: 403 });
+
+    if (request.method === "DELETE") {
+      const meta = await getArtifactMeta(env.METADATA, id);
+      if (!meta) return json({ error: "not found" }, { status: 404 });
+      if (meta.owner !== identity.email) return json({ error: "forbidden" }, { status: 403 });
+      await deleteArtifact(env.ARTIFACTS, env.METADATA, id, meta.persist);
+      ctx.waitUntil(caches.default.delete(rawCacheKey(url.origin, id)));
+      return new Response(null, { status: 204 });
+    }
 
     if (request.method === "PUT") {
-      const body = await request.json<ArtifactWriteBody>();
-      const content = body.content ?? existing.content;
+      const existing = await getArtifact(env.ARTIFACTS, env.METADATA, id);
+      if (!existing) return json({ error: "not found" }, { status: 404 });
+      if (existing.meta.owner !== identity.email) return json({ error: "forbidden" }, { status: 403 });
+
+      const body = await parseJsonBody<ArtifactWriteBody>(request);
+      if (!body) return json({ error: "invalid JSON body" }, { status: 400 });
+
+      const content = typeof body.content === "string" && body.content ? body.content : existing.content;
       const persist = body.persist ?? existing.meta.persist;
+      const visibility =
+        body.visibility === "public" || body.visibility === "private"
+          ? body.visibility
+          : existing.meta.visibility;
       const meta: ArtifactMeta = {
         ...existing.meta,
         filename: body.filename ?? existing.meta.filename,
-        mime: body.content ? detectMime(content) : existing.meta.mime,
-        visibility: body.visibility ?? existing.meta.visibility,
+        mime: content !== existing.content ? detectMime(content) : existing.meta.mime,
+        visibility,
         persist,
         expiresAt: expiresAtFor(persist),
       };
-      await putArtifact(env.ARTIFACTS, env.METADATA, meta, content);
+      await putArtifact(env.ARTIFACTS, env.METADATA, meta, content, existing.meta.persist);
+      ctx.waitUntil(caches.default.delete(rawCacheKey(url.origin, id)));
       return json({ artifact: meta });
-    }
-
-    if (request.method === "DELETE") {
-      await deleteArtifact(env.ARTIFACTS, env.METADATA, id);
-      return new Response(null, { status: 204 });
     }
   }
 
@@ -105,28 +141,49 @@ async function handleApi(request: Request, env: Env, pathname: string): Promise<
 // Served under /artifact/*, which Access leaves open at the edge (see
 // infra/main.tf's "artifact_public" application) so external users can view
 // a public artifact with no login. Private artifacts still require a valid
-// identity, checked here by the Worker itself.
-async function handleArtifactRaw(request: Request, env: Env, id: string): Promise<Response> {
+// identity, checked here by the Worker itself. Public reads are cached at
+// the edge (Cache API) since the same shared link is often opened by many
+// viewers; PUT/DELETE above explicitly purge this cache entry so an edit or
+// delete can never keep serving stale content.
+async function handleArtifactRaw(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  id: string
+): Promise<Response> {
+  const cache = caches.default;
+  const cacheKey = rawCacheKey(new URL(request.url).origin, id);
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
   const existing = await getArtifact(env.ARTIFACTS, env.METADATA, id);
   if (!existing) return json({ error: "not found" }, { status: 404 });
+
   if (existing.meta.visibility === "private") {
     const identity = await requireAuth(request, env);
     if (!identity) return json({ error: "unauthorized" }, { status: 403 });
+    return json({ artifact: existing.meta, content: existing.content });
   }
-  return json({ artifact: existing.meta, content: existing.content });
+
+  const response = json(
+    { artifact: existing.meta, content: existing.content },
+    { headers: { "cache-control": "public, max-age=60, s-maxage=31536000" } }
+  );
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     const rawMatch = url.pathname.match(/^\/artifact\/([\w-]+)\/raw$/);
     if (rawMatch) {
-      return handleArtifactRaw(request, env, rawMatch[1]);
+      return handleArtifactRaw(request, env, ctx, rawMatch[1]);
     }
 
     if (url.pathname.startsWith("/api/v1/")) {
-      return handleApi(request, env, url.pathname);
+      return handleApi(request, env, ctx, url.pathname);
     }
 
     if (url.pathname === "/" || url.pathname === "/index.html") {
@@ -137,12 +194,16 @@ export default {
     return env.ASSETS.fetch(request);
   },
 
+  // Non-persisted artifacts are cleaned up natively (KV expirationTtl + an
+  // R2 lifecycle rule on the "ephemeral/" prefix, see infra/main.tf), so
+  // this only needs to be a bounded safety-net sweep, not an exhaustive
+  // full-namespace scan.
   async scheduled(_event: ScheduledController, env: Env): Promise<void> {
     const artifacts = await listArtifacts(env.METADATA);
     const now = Date.now();
     for (const artifact of artifacts) {
       if (!artifact.persist && artifact.expiresAt && new Date(artifact.expiresAt).getTime() < now) {
-        await deleteArtifact(env.ARTIFACTS, env.METADATA, artifact.id);
+        await deleteArtifact(env.ARTIFACTS, env.METADATA, artifact.id, false);
       }
     }
   },

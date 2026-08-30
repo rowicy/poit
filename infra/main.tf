@@ -22,6 +22,23 @@ resource "cloudflare_workers_kv_namespace" "metadata" {
   title      = "ageage-metadata"
 }
 
+# Non-persisted artifact bodies live under the "ephemeral/" prefix (see
+# store.ts) and are deleted here after 24h, matching the KV metadata's
+# expirationTtl - no cron/list-scan needed for either store.
+resource "cloudflare_r2_bucket_lifecycle" "artifacts" {
+  account_id  = var.cloudflare_account_id
+  bucket_name = cloudflare_r2_bucket.artifacts.name
+
+  rules = [{
+    id         = "expire-ephemeral"
+    enabled    = true
+    conditions = { prefix = "ephemeral/" }
+    delete_objects_transition = {
+      condition = { type = "Age", max_age = 86400 }
+    }
+  }]
+}
+
 resource "cloudflare_zero_trust_access_service_token" "cli" {
   account_id = var.cloudflare_account_id
   name       = "ageage-cli"

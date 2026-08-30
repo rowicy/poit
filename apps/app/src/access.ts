@@ -26,9 +26,9 @@ function base64UrlDecodeToString(input: string): string {
   return new TextDecoder().decode(base64UrlDecode(input));
 }
 
-async function getJwks(teamDomain: string): Promise<Jwk[]> {
+async function getJwks(teamDomain: string, forceRefresh = false): Promise<Jwk[]> {
   const cached = jwksCache.get(teamDomain);
-  if (cached && Date.now() - cached.fetchedAt < JWKS_TTL_MS) return cached.keys;
+  if (!forceRefresh && cached && Date.now() - cached.fetchedAt < JWKS_TTL_MS) return cached.keys;
   const res = await fetch(`https://${teamDomain}.cloudflareaccess.com/cdn-cgi/access/certs`);
   if (!res.ok) throw new Error("failed to fetch cloudflare access certs");
   const body = (await res.json()) as { keys?: Jwk[] };
@@ -79,9 +79,15 @@ export async function verifyAccess(
   const audList = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
   if (accepted.length === 0 || !audList.some((a) => accepted.includes(a))) return null;
 
-  const keys = await getJwks(teamDomain);
-  const jwk = keys.find((k) => k.kid === header.kid);
-  if (!jwk) return null;
+  let keys = await getJwks(teamDomain);
+  let jwk = keys.find((k) => k.kid === header.kid);
+  if (!jwk) {
+    // Unknown kid: could be a just-rotated-in signing key, not necessarily
+    // an invalid token. Force one bypass-cache refetch before rejecting.
+    keys = await getJwks(teamDomain, true);
+    jwk = keys.find((k) => k.kid === header.kid);
+    if (!jwk) return null;
+  }
 
   const cryptoKey = await crypto.subtle.importKey(
     "jwk",
@@ -92,8 +98,13 @@ export async function verifyAccess(
   );
 
   const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-  const signature = base64UrlDecode(signatureB64);
-  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", cryptoKey, signature, signingInput);
+  let valid: boolean;
+  try {
+    const signature = base64UrlDecode(signatureB64);
+    valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", cryptoKey, signature, signingInput);
+  } catch {
+    return null;
+  }
   if (!valid) return null;
 
   return { email: payload.email, subject: payload.sub ?? payload.email ?? "unknown" };

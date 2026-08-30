@@ -4,11 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ageage</title>
-  <link rel="stylesheet" href="/assets/style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap"
+    rel="stylesheet"
+  />
+  <!-- /assets/* is served with Cache-Control: max-age=3600 (see public/_headers)
+       and has no build-time content hashing, so bump ?v=N here on every edit
+       to app.js/style.css to bust that cache. -->
+  <link rel="stylesheet" href="/assets/style.css?v=2" />
 </head>
 <body>
-  <div id="app">Loading...</div>
-  <script type="module" src="/assets/app.js"></script>
+  <div id="app">読み込み中...</div>
+  <script type="module" src="/assets/app.js?v=2"></script>
 </body>
 </html>

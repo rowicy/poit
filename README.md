@@ -4,7 +4,14 @@ md/html/txt アップロード・共有アプリ。モノレポ構成:
 
 - `apps/app` — Cloudflare Worker (API `/api/v1/*` + 静的SPA)。本文はR2、メタデータ(公開設定/永続化フラグ/mime種別等)はWorkers KVに保存。
 - `cli/ageage` — Go製CLI (`ageage share <file>`)
-- `infra` — Terraform (Cloudflareプロバイダ)。Access Application/Policy, R2バケット, KV Namespace, Service Tokenを管理
+- `infra` — Terraform (Cloudflareプロバイダ)。Access Application/Policy, R2バケット, R2 Lifecycle, KV Namespace, Service Tokenを管理
+
+## キャッシュ/永続化戦略
+
+- `GET /artifact/<id>/raw` の**公開**アーティファクトはCloudflareのCache API (`caches.default`) でエッジキャッシュする(`Cache-Control: public, max-age=60, s-maxage=31536000`)。同じ共有リンクが多数回閲覧される想定のため。PUT/DELETE成功時に該当キャッシュを明示的に`cache.delete()`するので、編集・削除後に古い内容が配信され続けることはない。private なアーティファクトはキャッシュしない。
+- 永続化オフ(default)のアーティファクトは、KVの`expirationTtl`(残りTTL秒数、最低60秒)と、R2の`ephemeral/`プレフィックス向けLifecycle Rule(24時間で削除)によりネイティブに自動削除される。cronによる全件スキャンは行わず、`scheduled()`はごく軽量なセーフティネットとしてのみ残している。
+- `/assets/*` は `public/_headers` で `Cache-Control: public, max-age=3600` を付与。ビルドステップがなくファイル名のcontent hashもないため、`app.js`/`style.css`を編集したら `index.html` 側の `?v=N` を必ずインクリメントしてキャッシュを外すこと。
+- `marked`/`DOMPurify` はCDNではなく `public/assets/vendor/` にバージョン固定で同梱し、Markdown表示時のみ動的読み込みする(ホーム画面では読み込まない)。Markdownは`DOMPurify.sanitize()`を通してから`innerHTML`に挿入している(XSS対策)。
 
 ## 認証設計
 
