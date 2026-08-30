@@ -4,7 +4,6 @@ dist/
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
 terraform.tfvars
 .env
 .DS_Store
