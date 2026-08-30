@@ -6,7 +6,7 @@ md/html/txt アップロード・共有アプリ (旧称 ageage)。`poit.rowicy.
 - `cli/poit` — Go製CLI (`poit share <file>`)
 - `infra` — Terraform (Cloudflareプロバイダ)。Worker本体(コード/静的アセット/バインディング/カスタムドメイン/cron)、R2バケット、R2 Lifecycle、KV Namespace、Access Application/Policy、Service Tokenをすべて管理
 
-> このリポジトリ名は移行前の `ageage` のまま残っています。改名手順は末尾の「リポジトリ名の変更」を参照してください。
+> GitHubリポジトリは `rowicy/ageage` から `rowicy/poit` にリネーム済み。
 
 ## 主な機能
 
@@ -52,15 +52,15 @@ POIT_CF_ACCESS_CLIENT_ID=... POIT_CF_ACCESS_CLIENT_SECRET=... ./poit share ./REA
 
 (Client ID/Secretは `terraform output cli_service_token_client_id` / `cli_service_token_client_secret`)
 
-## リポジトリ名の変更
+## リポジトリ名の変更 (実施済み)
 
-サービス名は `poit` に変更済みだが、GitHubリポジトリ名は `rowicy/ageage` のまま。変更する場合の手順:
+`rowicy/ageage` → `rowicy/poit` へのリネームは完了済み。実施した手順(参考用に残す):
 
-1. GitHubで `Settings > General > Repository name` から `rowicy/ageage` を新しい名前 (例: `rowicy/poit`) にリネームする(GitHubは旧URLからのリダイレクトを自動設定する)。
-2. ローカルのリモートURLを更新: `git remote set-url origin https://github.com/rowicy/<new-name>.git`
-3. `cli/poit/go.mod` と `cli/poit/main.go` のモジュールパスは `github.com/rowicy/ageage/cli/poit` のように**リポジトリ名を含んでいる**ため、`github.com/rowicy/<new-name>/cli/poit` に置換する(`go.mod`の`module`行、`main.go`の import 文)。
-4. GitHub Actions は `.github/workflows/ci.yml` のpush先ブランチ等リポジトリ名に依存する記述はないため変更不要。
-5. `infra/variables.tf` の `github_owner`/`github_repo` (現状Terraformでは未使用の記録用変数)を更新するか、不要なら削除する。
+1. GitHubで `Settings > General > Repository name` からリネーム(GitHubが旧URLからのリダイレクトを自動設定)。
+2. ローカルのリモートURLを更新: `git remote set-url origin https://github.com/rowicy/poit.git`
+3. `cli/poit/go.mod` の `module` 行と `cli/poit/main.go` の import 文 — リポジトリ名を含む `github.com/rowicy/ageage/cli/poit` を `github.com/rowicy/poit/cli/poit` に置換。
+
+`infra/variables.tf` の `github_owner`/`github_repo` (Terraform内では未使用の記録用変数)は必要なら別途 `poit` に更新すること。
 
 ## 既知の課題
 
