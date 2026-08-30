@@ -1,4 +1,4 @@
-import { createSignal, Show, onCleanup, type Component } from "solid-js";
+import { createSignal, Show, onCleanup, type Component, type JSX } from "solid-js";
 import type { ArtifactMime, Visibility } from "../lib/api";
 
 export interface OptionsMenuProps {
@@ -14,6 +14,8 @@ export interface OptionsMenuProps {
   onMimeChange?: (m: ArtifactMime) => void;
 }
 
+type SubmenuKey = "visibility" | "persist" | "mime";
+
 const DEFAULT_VISIBILITY: Visibility = "private";
 const DEFAULT_PERSIST = false;
 
@@ -21,7 +23,7 @@ const HOVER_CLOSE_DELAY_MS = 250;
 
 const OptionsMenu: Component<OptionsMenuProps> = (props) => {
   const [open, setOpen] = createSignal(false);
-  const [submenu, setSubmenu] = createSignal<"visibility" | "persist" | "mime" | null>(null);
+  const [submenu, setSubmenu] = createSignal<SubmenuKey | null>(null);
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
   function cancelClose() {
@@ -51,6 +53,27 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
     if (props.slug) badges.push(props.slug);
     return badges;
   };
+
+  // Hover opens a submenu for mouse users, but also needs a click/tap and
+  // keyboard path - touch devices never fire mouseenter, and a plain <div>
+  // is otherwise unreachable by keyboard.
+  function toggleSubmenu(key: SubmenuKey) {
+    setSubmenu((s) => (s === key ? null : key));
+  }
+  function submenuTriggerProps(key: SubmenuKey): JSX.HTMLAttributes<HTMLDivElement> {
+    return {
+      role: "button",
+      tabIndex: 0,
+      onMouseEnter: () => setSubmenu(key),
+      onClick: () => toggleSubmenu(key),
+      onKeyDown: (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleSubmenu(key);
+        }
+      },
+    };
+  }
 
   return (
     <div
@@ -86,7 +109,7 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
         </Show>
       </button>
       <div class="options-popover" classList={{ open: open() }}>
-        <div class="options-item" onMouseEnter={() => setSubmenu("visibility")}>
+        <div class="options-item" {...submenuTriggerProps("visibility")}>
           <span>公開設定</span>
           <span class="options-current">{props.visibility === "public" ? "パブリック" : "プライベート"} ▸</span>
         </div>
@@ -101,7 +124,7 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
           </div>
         </Show>
 
-        <div class="options-item" onMouseEnter={() => setSubmenu("persist")}>
+        <div class="options-item" {...submenuTriggerProps("persist")}>
           <span>永続化</span>
           <span class="options-current">{props.persist ? "オン" : "オフ"} ▸</span>
         </div>
@@ -117,7 +140,7 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
         </Show>
 
         <Show when={props.showMime}>
-          <div class="options-item" onMouseEnter={() => setSubmenu("mime")}>
+          <div class="options-item" {...submenuTriggerProps("mime")}>
             <span>ファイル種別</span>
             <span class="options-current">{props.mime ?? "txt"} ▸</span>
           </div>

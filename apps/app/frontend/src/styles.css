@@ -183,6 +183,12 @@ textarea {
 }
 
 .options-badge {
+  display: inline-block;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--primary);
@@ -206,7 +212,7 @@ textarea {
   opacity: 0;
   transform: translateY(-4px) scale(0.98);
   pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1), transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .options-popover.open {
@@ -626,6 +632,12 @@ textarea {
   gap: 0.375rem;
   font-size: 0.8125rem;
   cursor: pointer;
+}
+
+/* .hint defaults to --muted-foreground, which is unreadable on the dark
+   menubar background - keep it light there. */
+.md-menubar .hint {
+  color: var(--nord4);
 }
 
 .md-toc-panel {
