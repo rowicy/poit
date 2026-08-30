@@ -139,6 +139,7 @@ resource "cloudflare_workers_script" "app" {
   }
 
   bindings = [
+    { name = "ASSETS", type = "assets" },
     { name = "ARTIFACTS", type = "r2_bucket", bucket_name = cloudflare_r2_bucket.artifacts.name },
     { name = "METADATA", type = "kv_namespace", namespace_id = cloudflare_workers_kv_namespace.metadata.id },
     { name = "CF_ACCESS_TEAM_DOMAIN", type = "plain_text", text = "rowicy" },
