@@ -25,6 +25,7 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
   const [open, setOpen] = createSignal(false);
   const [submenu, setSubmenu] = createSignal<SubmenuKey | null>(null);
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
+  let rootRef: HTMLDivElement | undefined;
   // A normal mouse click starts outside the trigger, so it fires mouseenter
   // (which opens the popover) immediately before the click event itself. If
   // the click handler then toggled unconditionally, it would immediately
@@ -47,7 +48,23 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
     }, HOVER_CLOSE_DELAY_MS);
   }
 
-  onCleanup(cancelClose);
+  // Touch devices fire mouseenter (opening the popover) on tap, but never
+  // mouseleave on releasing it - the hover-close path above never runs, so
+  // without this a tap outside left the popover stuck open indefinitely
+  // (verified live). Same outside-tap-close pattern already used by
+  // FilterMenu/ShareTrigger/ArtifactRow.
+  function onDocumentClick(e: MouseEvent) {
+    if (rootRef && !rootRef.contains(e.target as Node)) {
+      setOpen(false);
+      setSubmenu(null);
+    }
+  }
+  document.addEventListener("click", onDocumentClick);
+
+  onCleanup(() => {
+    document.removeEventListener("click", onDocumentClick);
+    cancelClose();
+  });
 
   const isChanged = () =>
     props.visibility !== DEFAULT_VISIBILITY || props.persist !== DEFAULT_PERSIST || props.slug.length > 0;
@@ -103,6 +120,7 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
   return (
     <div
       class="options-menu"
+      ref={rootRef}
       onMouseEnter={() => {
         cancelClose();
         setOpen(true);

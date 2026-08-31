@@ -5,7 +5,27 @@ export interface ExtractedInfo {
   excerpt?: string;
 }
 
-const EXCERPT_MAX_LENGTH = 280;
+// Cloudflare KV caps a key's `metadata` option at 1024 bytes total, measured
+// as UTF-8 bytes (ArtifactMeta is stored there - see store.ts's putArtifact).
+// These budgets are BYTES, not JS string length: a naive `.slice(0, N)`
+// character cap still lets a CJK title/excerpt (this app's users are
+// Japanese-speaking) blow past 1024 bytes, since one JS string unit can be
+// up to 3 UTF-8 bytes. See truncateUtf8 below.
+const EXCERPT_MAX_BYTES = 240;
+const TITLE_MAX_BYTES = 160;
+
+/**
+ * Truncates `str` to at most `maxBytes` when UTF-8 encoded, without
+ * splitting a multi-byte character. Backs off from the byte cut point while
+ * it lands on a UTF-8 continuation byte (10xxxxxx).
+ */
+export function truncateUtf8(str: string, maxBytes: number): string {
+  const bytes = new TextEncoder().encode(str);
+  if (bytes.length <= maxBytes) return str;
+  let end = maxBytes;
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+  return new TextDecoder().decode(bytes.slice(0, end));
+}
 
 /**
  * Markdown: title is the first heading line found (any level); excerpt is
@@ -14,20 +34,25 @@ const EXCERPT_MAX_LENGTH = 280;
 function extractMarkdownInfo(content: string): ExtractedInfo {
   let title: string | undefined;
   const bodyParts: string[] = [];
+  let bodyLength = 0;
 
   for (const line of content.split(/\r?\n/)) {
     const heading = line.match(/^ {0,3}#{1,6}\s+(.*)$/);
     if (heading) {
-      if (!title) title = heading[1].trim();
+      if (!title) title = truncateUtf8(heading[1].trim(), TITLE_MAX_BYTES);
       continue;
     }
+    if (bodyLength >= EXCERPT_MAX_BYTES) continue;
     const trimmed = line.trim();
-    if (trimmed) bodyParts.push(trimmed);
+    if (trimmed) {
+      bodyParts.push(trimmed);
+      bodyLength += trimmed.length + 1;
+    }
   }
 
   return {
     title,
-    excerpt: bodyParts.join(" ").slice(0, EXCERPT_MAX_LENGTH) || undefined,
+    excerpt: truncateUtf8(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined,
   };
 }
 
@@ -49,6 +74,7 @@ async function extractHtmlInfo(html: string): Promise<ExtractedInfo> {
   let bodyDepth = 0;
   let skipDepth = 0;
   const bodyParts: string[] = [];
+  let bodyLength = 0;
 
   const rewriter = new HTMLRewriter()
     .on("title", {
@@ -57,7 +83,10 @@ async function extractHtmlInfo(html: string): Promise<ExtractedInfo> {
         titleSeen = true;
       },
       text(chunk) {
-        if (titleCapturing) title += chunk.text;
+        // Bounded even while accumulating, not just at the end - an
+        // unclosed <title> would otherwise make this grow with the entire
+        // rest of the document as it streams through.
+        if (titleCapturing && title.length < TITLE_MAX_BYTES) title += chunk.text;
       },
     })
     .on("body", {
@@ -78,9 +107,16 @@ async function extractHtmlInfo(html: string): Promise<ExtractedInfo> {
     })
     .on("*", {
       text(chunk) {
-        if (bodyDepth > 0 && skipDepth === 0) {
+        // Stop collecting once there's already enough for the excerpt -
+        // for a large document this avoids materializing a huge bodyParts
+        // array (and a huge intermediate joined string) just to slice off
+        // the first 280 characters at the end.
+        if (bodyDepth > 0 && skipDepth === 0 && bodyLength < EXCERPT_MAX_BYTES) {
           const t = chunk.text.trim();
-          if (t) bodyParts.push(t);
+          if (t) {
+            bodyParts.push(t);
+            bodyLength += t.length + 1;
+          }
         }
       },
     });
@@ -92,8 +128,9 @@ async function extractHtmlInfo(html: string): Promise<ExtractedInfo> {
         headingSeen[level] = true;
       },
       text(chunk) {
-        if (headingCapturing[level]) {
-          firstHeadingText[level] = (firstHeadingText[level] ?? "") + chunk.text;
+        const current = firstHeadingText[level] ?? "";
+        if (headingCapturing[level] && current.length < TITLE_MAX_BYTES) {
+          firstHeadingText[level] = current + chunk.text;
         }
       },
     });
@@ -104,8 +141,8 @@ async function extractHtmlInfo(html: string): Promise<ExtractedInfo> {
   const firstHeading = [1, 2, 3, 4, 5, 6].map((l) => firstHeadingText[l]?.trim()).find((t) => !!t);
 
   return {
-    title: title.trim() || firstHeading || undefined,
-    excerpt: bodyParts.join(" ").slice(0, EXCERPT_MAX_LENGTH) || undefined,
+    title: truncateUtf8(title.trim() || firstHeading || "", TITLE_MAX_BYTES) || undefined,
+    excerpt: truncateUtf8(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined,
   };
 }
 

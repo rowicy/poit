@@ -77,16 +77,17 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
     headingEls = Array.from(contentRef.querySelectorAll("h1, h2, h3, h4, h5, h6"));
   }
 
+  // Panel open/close is controlled only by the ☰ toggle button - jumping to
+  // a heading must not also close it (previously did, via setTocOpen(false)
+  // below).
   function jumpToHeading(index: number) {
     const heading = structure()?.headings[index];
     if (!heading) return;
     if (slideMode()) {
       setSlideIndex(heading.slideIndex);
-      setTocOpen(false);
       return;
     }
     headingEls[index]?.scrollIntoView({ behavior: "smooth", block: "start" });
-    setTocOpen(false);
   }
 
   const currentMarkdown = createMemo(() => {
@@ -119,7 +120,6 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
             >
               <p class="error">このアーティファクトは見つかりません。削除されたか、URLが間違っている可能性があります。</p>
             </Show>
-            <a href="/">ホームに戻る</a>
           </div>
         }
       >
@@ -142,15 +142,16 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
                 <button
                   type="button"
                   class="ghost"
+                  aria-label="目次"
                   onClick={(e) => {
                     e.stopPropagation();
                     setTocOpen((v) => !v);
                   }}
                 >
-                  ☰ 目次
+                  ☰ <span class="md-menubar-label">目次</span>
                 </button>
                 <span class="md-menubar-title">{artifact.title || artifact.filename}</span>
-                <label class="md-slide-toggle" onClick={(e) => e.stopPropagation()}>
+                <label class="md-slide-toggle" title="スライドモード" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={slideMode()}
@@ -159,7 +160,7 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
                       setSlideMode(e.currentTarget.checked);
                     }}
                   />
-                  スライドモード
+                  <span class="md-menubar-label">スライドモード</span>
                 </label>
                 <Show when={slideMode()}>
                   <span class="hint">

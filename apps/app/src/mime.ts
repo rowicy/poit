@@ -15,10 +15,24 @@ const MARKDOWN_THRESHOLD = 2;
 
 const STRONG_HTML_MARKERS = ["<!doctype html", "<html", "<head", "<body", "<script", "<style"];
 
-const RE_HTML_TAG = /<\s*\/?\s*[a-z][a-z0-9]*(\s[^<>]*)?>/gi;
+// Bounded to {0,3} rather than `\s*` on both sides of the optional `/` -
+// two adjacent unbounded `\s*` separated only by a zero-width-capable token
+// makes the backtracking engine try O(n) splits at O(n) positions (O(n^2)
+// total) on non-matching whitespace-heavy input (e.g. a stray "<" followed
+// by a long run of spaces); real HTML tags never have this whitespace
+// anyway. (The original Go port uses RE2, which is immune to this; JS's
+// backtracking RegExp engine is not.)
+const RE_HTML_TAG = /<\s{0,3}\/?\s{0,3}[a-z][a-z0-9]*(\s[^<>]*)?>/gi;
 const RE_MD_HEADER = /^ {0,3}#{1,6}\s/m;
 const RE_MD_FENCE = /```/;
-const RE_MD_TABLE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/m;
+// Every `\s*` bounded to `\s{0,3}` for the same catastrophic-backtracking
+// reason as RE_HTML_TAG above. This one is repeated inside a `(...)+` group,
+// so leaving even one `\s*` unbounded still let many repetitions' worth of
+// whitespace be re-partitioned between the group's last iteration and the
+// trailing `\|?\s*$` in ~exponentially many ways on non-matching input -
+// verified: "|---".repeat(4000) + whitespace + a non-matching tail took
+// ~4.9s against the once-partially-bounded version of this pattern.
+const RE_MD_TABLE = /^ {0,3}\|?\s{0,3}:?-{2,}:?\s{0,3}(\|\s{0,3}:?-{2,}:?\s{0,3})+\|?\s{0,3}$/m;
 const RE_MD_LINK = /\[[^\]\n]+\]\([^)\n]+\)/;
 const RE_MD_QUOTE = /^ {0,3}>\s?/m;
 const RE_MD_BOLD = /(\*\*[^*\n]+\*\*|__[^_\n]+__)/;

@@ -1,5 +1,5 @@
 import { detectMime } from "./mime";
-import { extractInfo } from "./metadata";
+import { extractInfo, truncateUtf8 } from "./metadata";
 import { verifyAccess } from "./access";
 import {
   type ArtifactMeta,
@@ -34,6 +34,17 @@ const NO_STORE = { "cache-control": "private, no-store" };
 const SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
 const VALID_MIMES = new Set(["md", "html", "txt"]);
 const MAX_CONTENT_LENGTH = 10 * 1024 * 1024; // 10MB, chars ~= bytes for typical md/html/txt uploads
+// Cloudflare KV caps a key's `metadata` option (ArtifactMeta, see
+// store.ts's putArtifact) at 1024 bytes total, measured in UTF-8 bytes;
+// filename is client-supplied and otherwise unbounded, so cap it
+// defensively too (title/excerpt are bounded the same way in metadata.ts).
+// Byte-safe (not a plain character slice) since a CJK filename can be up
+// to 3 UTF-8 bytes per JS string unit.
+const MAX_FILENAME_BYTES = 160;
+
+function clampFilename(filename: string | undefined, fallback: string): string {
+  return truncateUtf8(filename || fallback, MAX_FILENAME_BYTES);
+}
 
 // ponytail: per-isolate in-memory fixed-window counter, not shared across
 // isolates/colos, so it only blunts a single client hammering a single
@@ -123,7 +134,7 @@ async function handleApi(
     const info = await extractInfo(mime, body.content);
     const meta: ArtifactMeta = {
       id,
-      filename: body.filename ?? id,
+      filename: clampFilename(body.filename, id),
       mime,
       visibility: body.visibility === "public" ? "public" : "private",
       persist,
@@ -182,7 +193,7 @@ async function handleApi(
       const info = contentChanged ? await extractInfo(mime, content) : null;
       const meta: ArtifactMeta = {
         ...existing.meta,
-        filename: body.filename ?? existing.meta.filename,
+        filename: clampFilename(body.filename, existing.meta.filename),
         mime,
         visibility,
         persist,
