@@ -1,39 +1,7 @@
-import { createResource, createSignal, createMemo, lazy, Show, For, Suspense, onCleanup, type Component } from "solid-js";
+import { createResource, createSignal, createMemo, createEffect, Show, For, onCleanup, type Component } from "solid-js";
 import { ApiError, getArtifactRaw } from "../lib/api";
 import Spinner from "../components/Spinner";
-
-// solid-markdown-wasm's WASM binary is very large (it bundles mermaid,
-// katex, and syntax-highlighting themes we don't use) - loaded only when an
-// artifact actually turns out to be Markdown, never for html/txt views.
-const MarkdownRenderer = lazy(() =>
-  import("solid-markdown-wasm").then((m) => ({ default: m.MarkdownRenderer }))
-);
-
-interface HeadingInfo {
-  level: number;
-  text: string;
-  slideIndex: number;
-}
-
-function parseMarkdownStructure(markdown: string): { slideTexts: string[]; headings: HeadingInfo[] } {
-  const lines = markdown.split(/\r?\n/);
-  const slides: string[][] = [[]];
-  const headings: HeadingInfo[] = [];
-
-  for (const line of lines) {
-    const heading = line.match(/^ {0,3}(#{1,6})\s+(.*)$/);
-    if (heading) {
-      const level = heading[1].length;
-      if (level === 1 && slides[slides.length - 1].length > 0) {
-        slides.push([]);
-      }
-      headings.push({ level, text: heading[2].trim(), slideIndex: slides.length - 1 });
-    }
-    slides[slides.length - 1].push(line);
-  }
-
-  return { slideTexts: slides.map((s) => s.join("\n")), headings };
-}
+import type * as MarkdownLib from "../lib/markdown";
 
 const AUTO_HIDE_THRESHOLD_PX = 72;
 
@@ -44,6 +12,7 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
   const [tocOpen, setTocOpen] = createSignal(false);
   const [slideMode, setSlideMode] = createSignal(false);
   const [slideIndex, setSlideIndex] = createSignal(0);
+  const [mdLib, setMdLib] = createSignal<typeof MarkdownLib | null>(null);
   let contentRef: HTMLDivElement | undefined;
   let headingEls: HTMLElement[] = [];
 
@@ -53,13 +22,24 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
   document.addEventListener("mousemove", onMouseMove);
   onCleanup(() => document.removeEventListener("mousemove", onMouseMove));
 
+  // markdown-it + highlight.js are loaded only once an artifact actually
+  // turns out to be Markdown, never for html/txt views (this replaces
+  // solid-markdown-wasm, whose WASM binary bundled mermaid/katex we never
+  // used and rendering we couldn't fix - see ../lib/markdown.ts).
+  createEffect(() => {
+    if (data()?.artifact.mime === "md" && !mdLib()) {
+      import("../lib/markdown").then(setMdLib);
+    }
+  });
+
   const structure = createMemo(() => {
     // data() throws when the resource has errored (e.g. 404); guard on
     // data.error first so that doesn't crash this memo's reactive graph.
     if (data.error) return null;
     const d = data();
-    if (!d || d.artifact.mime !== "md") return null;
-    return parseMarkdownStructure(d.content);
+    const lib = mdLib();
+    if (!d || !lib || d.artifact.mime !== "md") return null;
+    return lib.parseMarkdownStructure(d.content);
   });
 
   const slideCount = () => structure()?.slideTexts.length ?? 0;
@@ -113,6 +93,18 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
     const s = structure();
     if (!s) return "";
     return slideMode() ? s.slideTexts[slideIndex()] ?? "" : (data()?.content ?? "");
+  });
+
+  // Renders into contentRef imperatively (rather than via a reactive
+  // innerHTML prop) so collectHeadings/renderMermaidDiagrams run in the same
+  // tick, right after the markup they inspect actually lands in the DOM.
+  createEffect(() => {
+    const lib = mdLib();
+    const markdown = currentMarkdown();
+    if (!lib || !contentRef) return;
+    contentRef.innerHTML = lib.renderMarkdown(markdown);
+    collectHeadings();
+    void lib.renderMermaidDiagrams(contentRef);
   });
 
   return (
@@ -197,16 +189,9 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
                 </ul>
               </div>
 
-              <div class="md-content" ref={contentRef}>
-                <Suspense fallback={<Spinner label="読み込み中..." />}>
-                  <MarkdownRenderer
-                    markdown={currentMarkdown()}
-                    theme="nord"
-                    onLoaded={collectHeadings}
-                    fallback={<Spinner label="レンダリング中..." />}
-                  />
-                </Suspense>
-              </div>
+              <Show when={mdLib()} fallback={<div class="md-content"><Spinner label="読み込み中..." /></div>}>
+                <div class="md-content" ref={contentRef} />
+              </Show>
             </div>
           );
         })()}

@@ -1,3 +1,5 @@
+@import "highlight.js/styles/nord.css";
+
 :root {
   --background: #ffffff;
   --foreground: #0e172a;
@@ -759,6 +761,335 @@ textarea {
   max-width: 48rem;
   margin: 0 auto;
   padding: 5rem 1.5rem 4rem;
+  color: var(--nord0);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.md-content h1,
+.md-content h2,
+.md-content h3,
+.md-content h4,
+.md-content h5,
+.md-content h6 {
+  color: var(--nord0);
+  scroll-margin-top: 4.5rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.md-content h1 {
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--nord4);
+}
+
+.md-content h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--nord4);
+}
+
+.md-content blockquote {
+  margin: 1rem 0;
+  padding: 0.6em 1.2em;
+  border-left: 3px solid var(--nord8);
+  background: var(--nord4);
+  border-radius: 0 8px 8px 0;
+  color: var(--nord3);
+}
+
+.md-content hr {
+  border: none;
+  border-top: 1px solid var(--nord4);
+  margin: 2.25rem 0;
+}
+
+.md-content a {
+  color: #5e81ac;
+  text-underline-offset: 0.15em;
+}
+
+.md-content img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.md-content :not(pre) > code {
+  background: var(--nord4);
+  color: var(--nord3);
+  padding: 0.15em 0.4em;
+  border-radius: 5px;
+  font-size: 0.88em;
+}
+
+.md-content pre {
+  margin: 1.25rem 0;
+  border-radius: 10px;
+  overflow: auto;
+  background: var(--nord0);
+}
+
+.md-content pre code {
+  display: block;
+  padding: 1em 1.1em;
+  background: transparent;
+  border-radius: 0;
+  font-size: 0.875em;
+}
+
+/* highlight.js's nord.css theme (imported above) colors .hljs itself; this
+   is only for the plain <pre><code> fallback for languages hljs doesn't
+   know, which would otherwise inherit .md-content's dark-on-dark text
+   color against this block's dark background. */
+.md-content pre code:not(.hljs) {
+  color: var(--nord4);
+}
+
+/* --- Task lists --- */
+
+.md-content .task-list-item {
+  list-style: none;
+  margin-left: -1.4em;
+}
+
+.md-content .task-list-item input[type="checkbox"] {
+  margin-right: 0.5em;
+  width: 1em;
+  height: 1em;
+  accent-color: var(--nord8);
+  vertical-align: middle;
+  position: relative;
+  top: -0.05em;
+}
+
+/* --- Tables --- */
+
+.md-content .md-table-wrap {
+  overflow-x: auto;
+  margin: 1.25rem 0;
+  border-radius: 8px;
+  border: 1px solid var(--nord4);
+}
+
+.md-content table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9em;
+}
+
+.md-content th,
+.md-content td {
+  border-bottom: 1px solid var(--nord4);
+  border-right: 1px solid var(--nord4);
+  padding: 0.55em 0.9em;
+  text-align: left;
+}
+
+.md-content th:last-child,
+.md-content td:last-child {
+  border-right: none;
+}
+
+.md-content tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.md-content thead th {
+  background: var(--nord4);
+}
+
+/* --- Footnotes (markdown-it-footnote) --- */
+
+.md-content .footnote-ref {
+  font-size: 0.75em;
+}
+
+.md-content .footnotes {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--nord4);
+  font-size: 0.875rem;
+  color: var(--nord3);
+}
+
+.md-content .footnotes-list {
+  padding-left: 1.25rem;
+}
+
+/* --- GitHub/GitLab alerts (`> [!NOTE]` etc.) --- */
+
+.md-content .md-alert {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--nord8);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--nord8) 10%, transparent);
+}
+
+.md-content .md-alert-title {
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #5e81ac;
+}
+
+.md-content .md-alert p:last-child {
+  margin-bottom: 0;
+}
+
+.md-content .md-alert-tip {
+  border-left-color: #a3be8c;
+  background: color-mix(in srgb, #a3be8c 12%, transparent);
+}
+.md-content .md-alert-tip .md-alert-title {
+  color: #4c7a3f;
+}
+
+.md-content .md-alert-important {
+  border-left-color: #b48ead;
+  background: color-mix(in srgb, #b48ead 12%, transparent);
+}
+.md-content .md-alert-important .md-alert-title {
+  color: #8f5c7c;
+}
+
+.md-content .md-alert-warning {
+  border-left-color: #d08770;
+  background: color-mix(in srgb, #d08770 12%, transparent);
+}
+.md-content .md-alert-warning .md-alert-title {
+  color: #b3572f;
+}
+
+.md-content .md-alert-caution {
+  border-left-color: #bf616a;
+  background: color-mix(in srgb, #bf616a 12%, transparent);
+}
+.md-content .md-alert-caution .md-alert-title {
+  color: #a13f48;
+}
+
+/* --- mkdocs admonitions (`!!! type "title"`) --- */
+
+.md-content .md-admonition {
+  margin: 1.25rem 0;
+  padding: 0.85rem 1rem 1rem;
+  border: 1px solid var(--nord4);
+  border-left: 4px solid var(--nord8);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--nord8) 6%, transparent);
+}
+
+.md-content .md-admonition-title {
+  margin: 0 0 0.5rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #5e81ac;
+}
+
+.md-content .md-admonition > :last-child {
+  margin-bottom: 0;
+}
+
+.md-content .md-admonition-tip,
+.md-content .md-admonition-success,
+.md-content .md-admonition-example {
+  border-color: color-mix(in srgb, #a3be8c 45%, transparent);
+  border-left-color: #a3be8c;
+  background: color-mix(in srgb, #a3be8c 8%, transparent);
+}
+.md-content .md-admonition-tip .md-admonition-title,
+.md-content .md-admonition-success .md-admonition-title,
+.md-content .md-admonition-example .md-admonition-title {
+  color: #4c7a3f;
+}
+
+.md-content .md-admonition-warning,
+.md-content .md-admonition-caution {
+  border-color: color-mix(in srgb, #d08770 45%, transparent);
+  border-left-color: #d08770;
+  background: color-mix(in srgb, #d08770 8%, transparent);
+}
+.md-content .md-admonition-warning .md-admonition-title,
+.md-content .md-admonition-caution .md-admonition-title {
+  color: #b3572f;
+}
+
+.md-content .md-admonition-danger,
+.md-content .md-admonition-failure,
+.md-content .md-admonition-bug {
+  border-color: color-mix(in srgb, #bf616a 45%, transparent);
+  border-left-color: #bf616a;
+  background: color-mix(in srgb, #bf616a 8%, transparent);
+}
+.md-content .md-admonition-danger .md-admonition-title,
+.md-content .md-admonition-failure .md-admonition-title,
+.md-content .md-admonition-bug .md-admonition-title {
+  color: #a13f48;
+}
+
+.md-content .md-admonition-question,
+.md-content .md-admonition-quote,
+.md-content .md-admonition-abstract,
+.md-content .md-admonition-info {
+  border-color: color-mix(in srgb, #b48ead 45%, transparent);
+  border-left-color: #b48ead;
+  background: color-mix(in srgb, #b48ead 8%, transparent);
+}
+.md-content .md-admonition-question .md-admonition-title,
+.md-content .md-admonition-quote .md-admonition-title,
+.md-content .md-admonition-abstract .md-admonition-title,
+.md-content .md-admonition-info .md-admonition-title {
+  color: #8f5c7c;
+}
+
+/* --- ==highlight== / ++kbd++ --- */
+
+.md-content mark {
+  background: #ebcb8b;
+  color: var(--nord0);
+  padding: 0.05em 0.2em;
+  border-radius: 3px;
+}
+
+.md-content .md-keys kbd {
+  display: inline-block;
+  padding: 0.1em 0.5em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  border: 1px solid var(--nord3);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--nord4);
+  color: var(--nord0);
+}
+
+/* --- ```mermaid --- */
+
+.md-content .md-mermaid {
+  display: block;
+  margin: 1.25rem 0;
+  padding: 1.25rem;
+  background: #fff;
+  border-radius: 10px;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--nord0);
+  border: 1px solid var(--nord4);
+}
+
+.md-content .md-mermaid.md-mermaid-rendered {
+  white-space: normal;
+  text-align: center;
+}
+
+.md-content .md-mermaid.md-mermaid-rendered svg {
+  max-width: 100%;
+}
+
+.md-content .md-mermaid.md-mermaid-error {
+  color: #bf616a;
+  white-space: pre-wrap;
 }
 
 .spinner-row {

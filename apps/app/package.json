@@ -10,19 +10,23 @@
     "build:frontend": "pnpm build:wasm && vite build --config frontend/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:frontend": "tsc --noEmit -p frontend/tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:frontend": "vitest run --config frontend/vitest.config.ts"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "esbuild": "^0.28.1",
-    "wrangler": "^4.0.0",
-    "@cloudflare/workers-types": "^4.20260101.0",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "vitest": "^4.1.11",
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "esbuild": "^0.28.1",
+    "highlight.js": "^11.12.0",
+    "markdown-it": "^15.0.1",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-task-lists": "^2.1.1",
+    "mermaid": "^11.17.2",
+    "solid-js": "^1.9.5",
+    "typescript": "^5.7.2",
     "vite": "^7.0.0",
     "vite-plugin-solid": "^2.11.0",
-    "vite-plugin-wasm": "^3.4.1",
-    "solid-js": "^1.9.5",
-    "solid-markdown-wasm": "^1.12.1"
+    "vitest": "^4.1.11",
+    "wrangler": "^4.0.0"
   }
 }
