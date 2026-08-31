@@ -4,7 +4,6 @@ import OptionsMenu from "./OptionsMenu";
 
 export interface ArtifactRowProps {
   artifact: ArtifactMeta;
-  onEdit: (a: ArtifactMeta) => void;
   onDelete: (id: string) => void;
   onSettingsChange: (id: string, patch: { visibility?: Visibility; persist?: boolean; mime?: ArtifactMime }) => void;
 }
@@ -23,6 +22,13 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
   document.addEventListener("click", onDocumentClick);
   onCleanup(() => document.removeEventListener("click", onDocumentClick));
 
+  function onMenuKeyDown(e: KeyboardEvent) {
+    if (e.key === "Escape" && menuOpen()) {
+      e.stopPropagation();
+      setMenuOpen(false);
+    }
+  }
+
   return (
     <li>
       <a href={`/artifact/${props.artifact.id}`} class="artifact-link">
@@ -35,11 +41,13 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
           {props.artifact.persist ? " · 永続" : ""}
         </span>
       </a>
-      <div class="item-menu" classList={{ open: menuOpen() }} ref={rootRef}>
+      <div class="item-menu" classList={{ open: menuOpen() }} ref={rootRef} onKeyDown={onMenuKeyDown}>
         <button
           type="button"
           class="ghost menu-trigger"
           aria-label="操作メニュー"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen()}
           onClick={(e) => {
             e.stopPropagation();
             setMenuOpen((v) => !v);
@@ -48,15 +56,6 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
           ⋯
         </button>
         <div class="menu-popover">
-          <button
-            type="button"
-            onClick={() => {
-              props.onEdit(props.artifact);
-              setMenuOpen(false);
-            }}
-          >
-            編集
-          </button>
           <div class="menu-settings-row">
             <OptionsMenu
               visibility={props.artifact.visibility}

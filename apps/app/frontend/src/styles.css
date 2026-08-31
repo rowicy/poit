@@ -105,6 +105,7 @@ textarea {
 }
 
 .badge {
+  flex-shrink: 0;
   font-size: 0.75rem;
   color: var(--muted-foreground);
   background: var(--muted);
@@ -125,6 +126,20 @@ textarea {
   border-radius: var(--radius);
   padding: 0.75rem 1rem;
   margin: 0;
+}
+
+.artifact-not-found {
+  max-width: 32rem;
+  margin: 4rem auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: center;
+}
+
+.artifact-not-found a {
+  color: var(--primary);
 }
 
 .modal-backdrop {
@@ -232,6 +247,10 @@ textarea {
   transform: translateX(-50%) translateY(0) scale(1);
 }
 
+.options-row {
+  position: relative;
+}
+
 .options-item {
   display: flex;
   justify-content: space-between;
@@ -251,10 +270,22 @@ textarea {
   font-size: 0.8125rem;
 }
 
+/* Recursive submenus expand to the right of their parent item, like a
+   native nested menu, rather than stacking below it. */
 .options-submenu {
+  position: absolute;
+  top: -0.375rem;
+  left: 100%;
+  margin-left: 0.375rem;
+  z-index: 21;
   display: flex;
   flex-direction: column;
-  padding: 0.125rem 0.25rem 0.375rem 1rem;
+  min-width: 11rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(14, 23, 42, 0.12);
+  padding: 0.375rem;
 }
 
 .options-submenu button {
@@ -265,6 +296,7 @@ textarea {
   border-radius: calc(var(--radius) - 2px);
   font-weight: 400;
   font-size: 0.8125rem;
+  white-space: nowrap;
 }
 
 .options-submenu button:hover {
@@ -274,6 +306,25 @@ textarea {
 .options-submenu button.active {
   color: var(--primary);
   font-weight: 600;
+}
+
+/* Below ~640px the popover itself already spans most of the viewport width,
+   so cascading a submenu further right/left off its edge runs off-screen
+   and becomes unreachable (verified: a 176px submenu at the card's right
+   edge overflows a 500px viewport). Stack it under the parent row instead. */
+@media (max-width: 640px) {
+  .options-submenu {
+    position: static;
+    top: auto;
+    left: auto;
+    margin: 0.25rem 0 0.375rem 0.75rem;
+    min-width: 0;
+    border: none;
+    border-left: 2px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0.125rem 0 0.125rem 0.5rem;
+  }
 }
 
 .options-slug-row {
@@ -322,29 +373,9 @@ textarea {
   justify-content: center;
   padding: 3rem 2rem;
   margin-bottom: 1.5rem;
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 2);
   background: var(--muted);
-  transition: border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.share-field.drag-over {
-  border-color: var(--primary);
-  background: var(--accent);
-}
-
-.drop-hint {
-  position: absolute;
-  top: 0.75rem;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
-  opacity: 0.7;
-  pointer-events: none;
 }
 
 .share-stack {
@@ -422,9 +453,46 @@ textarea {
   color: var(--foreground);
 }
 
-.artifact-list-card h2 {
-  margin: 0 0 1rem;
+.artifact-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.artifact-list-header h2 {
+  margin: 0;
   font-size: 1.125rem;
+}
+
+.filter-menu .options-popover {
+  min-width: 12rem;
+}
+
+.filter-reset {
+  width: 100%;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding-top: 0.5rem;
+  color: var(--muted-foreground);
+  font-weight: 400;
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.filter-reset:hover {
+  color: var(--foreground);
+  background: none;
+}
+
+.filter-clear-inline {
+  display: inline;
+  padding: 0;
+  text-decoration: underline;
+  font-size: inherit;
 }
 
 .artifact-list {
@@ -542,17 +610,6 @@ textarea {
 .menu-settings-row .options-trigger {
   width: 100%;
   justify-content: flex-start;
-}
-
-.edit-modal {
-  width: 40rem;
-}
-
-.edit-textarea {
-  width: 100%;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.875rem;
-  resize: vertical;
 }
 
 /* Artifact viewer: content only, no app chrome. */

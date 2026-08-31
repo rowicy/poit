@@ -1,5 +1,5 @@
 import { createResource, createSignal, createMemo, lazy, Show, For, Suspense, onCleanup, type Component } from "solid-js";
-import { getArtifactRaw } from "../lib/api";
+import { ApiError, getArtifactRaw } from "../lib/api";
 import Spinner from "../components/Spinner";
 
 // solid-markdown-wasm's WASM binary is very large (it bundles mermaid,
@@ -54,6 +54,9 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
   onCleanup(() => document.removeEventListener("mousemove", onMouseMove));
 
   const structure = createMemo(() => {
+    // data() throws when the resource has errored (e.g. 404); guard on
+    // data.error first so that doesn't crash this memo's reactive graph.
+    if (data.error) return null;
     const d = data();
     if (!d || d.artifact.mime !== "md") return null;
     return parseMarkdownStructure(d.content);
@@ -116,7 +119,17 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
     <Show when={!data.loading} fallback={<Spinner label="読み込み中..." />}>
       <Show
         when={!data.error}
-        fallback={<p class="error">{data.error ? String(data.error.message ?? data.error) : "エラー"}</p>}
+        fallback={
+          <div class="artifact-not-found">
+            <Show
+              when={data.error instanceof ApiError && data.error.status === 404}
+              fallback={<p class="error">{String(data.error?.message ?? data.error)}</p>}
+            >
+              <p class="error">このアーティファクトは見つかりません。削除されたか、URLが間違っている可能性があります。</p>
+            </Show>
+            <a href="/">ホームに戻る</a>
+          </div>
+        }
       >
         {(() => {
           const artifact = data()!.artifact;

@@ -20,6 +20,14 @@ export interface ShareOptions {
   slug?: string;
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   let res: Response;
   try {
@@ -32,7 +40,7 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `request failed: ${res.status}`);
+    throw new ApiError(body.error ?? `request failed: ${res.status}`, res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

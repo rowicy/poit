@@ -25,6 +25,12 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
   const [open, setOpen] = createSignal(false);
   const [submenu, setSubmenu] = createSignal<SubmenuKey | null>(null);
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
+  // A normal mouse click starts outside the trigger, so it fires mouseenter
+  // (which opens the popover) immediately before the click event itself. If
+  // the click handler then toggled unconditionally, it would immediately
+  // flip the just-opened popover shut again, and mouse users could never
+  // open it - see the flow below.
+  let openedByHover = false;
 
   function cancelClose() {
     if (closeTimer) {
@@ -57,6 +63,7 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
   // Hover opens a submenu for mouse users, but also needs a click/tap and
   // keyboard path - touch devices never fire mouseenter, and a plain <div>
   // is otherwise unreachable by keyboard.
+  let submenuOpenedByHover = false;
   function toggleSubmenu(key: SubmenuKey) {
     setSubmenu((s) => (s === key ? null : key));
   }
@@ -64,8 +71,26 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
     return {
       role: "button",
       tabIndex: 0,
-      onMouseEnter: () => setSubmenu(key),
-      onClick: () => toggleSubmenu(key),
+      "aria-haspopup": "menu",
+      "aria-expanded": submenu() === key,
+      onMouseEnter: () => {
+        setSubmenu(key);
+        submenuOpenedByHover = true;
+      },
+      onMouseLeave: () => {
+        submenuOpenedByHover = false;
+      },
+      // A mouse click landing on a not-yet-hovered row fires mouseenter
+      // (opening it) right before this click - same race as the top-level
+      // trigger above, so the click that merely arrived here must not
+      // immediately toggle the submenu back shut.
+      onClick: () => {
+        if (submenuOpenedByHover) {
+          submenuOpenedByHover = false;
+          return;
+        }
+        toggleSubmenu(key);
+      },
       onKeyDown: (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -81,22 +106,40 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
       onMouseEnter={() => {
         cancelClose();
         setOpen(true);
+        openedByHover = true;
       }}
-      onMouseLeave={scheduleClose}
+      onMouseLeave={() => {
+        openedByHover = false;
+        scheduleClose();
+      }}
     >
-      <button type="button" class="ghost options-trigger" title="オプション" onClick={() => setOpen((v) => !v)}>
+      <button
+        type="button"
+        class="ghost options-trigger"
+        title="オプション"
+        aria-haspopup="menu"
+        aria-expanded={open()}
+        onClick={() => {
+          // Swallow the click that immediately follows a hover-open (see
+          // note above) instead of toggling it straight back shut; a
+          // deliberate second click (no fresh mouseenter in between) still
+          // toggles closed as normal.
+          if (openedByHover) {
+            openedByHover = false;
+            return;
+          }
+          setOpen((v) => !v);
+        }}
+      >
         <span class="options-icon" aria-hidden="true">
-          <svg viewBox="0 0 20 20" width="16" height="16" fill="none">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6" />
             <path
-              d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
               stroke="currentColor"
-              stroke-width="1.4"
-            />
-            <path
-              d="M16.2 10a6.2 6.2 0 0 0-.08-1.02l1.36-1.06-1.3-2.25-1.6.54a6.3 6.3 0 0 0-1.76-1.02l-.24-1.67H9.92l-.24 1.67a6.3 6.3 0 0 0-1.76 1.02l-1.6-.54-1.3 2.25 1.36 1.06a6.2 6.2 0 0 0 0 2.04l-1.36 1.06 1.3 2.25 1.6-.54a6.3 6.3 0 0 0 1.76 1.02l.24 1.67h2.36l.24-1.67a6.3 6.3 0 0 0 1.76-1.02l1.6.54 1.3-2.25-1.36-1.06c.05-.34.08-.68.08-1.02Z"
-              stroke="currentColor"
-              stroke-width="1.2"
+              stroke-width="1.6"
               stroke-linejoin="round"
+              stroke-linecap="round"
             />
           </svg>
         </span>
@@ -109,50 +152,56 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
         </Show>
       </button>
       <div class="options-popover" classList={{ open: open() }}>
-        <div class="options-item" {...submenuTriggerProps("visibility")}>
-          <span>公開設定</span>
-          <span class="options-current">{props.visibility === "public" ? "パブリック" : "プライベート"} ▸</span>
-        </div>
-        <Show when={submenu() === "visibility"}>
-          <div class="options-submenu">
-            <button type="button" classList={{ active: props.visibility === "private" }} onClick={() => props.onVisibilityChange("private")}>
-              プライベート (rowicy内) {props.visibility === "private" ? "✓" : ""}
-            </button>
-            <button type="button" classList={{ active: props.visibility === "public" }} onClick={() => props.onVisibilityChange("public")}>
-              パブリック (誰でも閲覧可) {props.visibility === "public" ? "✓" : ""}
-            </button>
+        <div class="options-row">
+          <div class="options-item" {...submenuTriggerProps("visibility")}>
+            <span>公開設定</span>
+            <span class="options-current">{props.visibility === "public" ? "パブリック" : "プライベート"} ▸</span>
           </div>
-        </Show>
-
-        <div class="options-item" {...submenuTriggerProps("persist")}>
-          <span>永続化</span>
-          <span class="options-current">{props.persist ? "オン" : "オフ"} ▸</span>
-        </div>
-        <Show when={submenu() === "persist"}>
-          <div class="options-submenu">
-            <button type="button" classList={{ active: !props.persist }} onClick={() => props.onPersistChange(false)}>
-              オフ (90日で自動削除) {!props.persist ? "✓" : ""}
-            </button>
-            <button type="button" classList={{ active: props.persist }} onClick={() => props.onPersistChange(true)}>
-              オン (永続) {props.persist ? "✓" : ""}
-            </button>
-          </div>
-        </Show>
-
-        <Show when={props.showMime}>
-          <div class="options-item" {...submenuTriggerProps("mime")}>
-            <span>ファイル種別</span>
-            <span class="options-current">{props.mime ?? "txt"} ▸</span>
-          </div>
-          <Show when={submenu() === "mime"}>
+          <Show when={submenu() === "visibility"}>
             <div class="options-submenu">
-              {(["md", "html", "txt"] as ArtifactMime[]).map((m) => (
-                <button type="button" classList={{ active: props.mime === m }} onClick={() => props.onMimeChange?.(m)}>
-                  {m} {props.mime === m ? "✓" : ""}
-                </button>
-              ))}
+              <button type="button" classList={{ active: props.visibility === "private" }} onClick={() => props.onVisibilityChange("private")}>
+                プライベート (rowicy内) {props.visibility === "private" ? "✓" : ""}
+              </button>
+              <button type="button" classList={{ active: props.visibility === "public" }} onClick={() => props.onVisibilityChange("public")}>
+                パブリック (誰でも閲覧可) {props.visibility === "public" ? "✓" : ""}
+              </button>
             </div>
           </Show>
+        </div>
+
+        <div class="options-row">
+          <div class="options-item" {...submenuTriggerProps("persist")}>
+            <span>永続化</span>
+            <span class="options-current">{props.persist ? "オン" : "オフ"} ▸</span>
+          </div>
+          <Show when={submenu() === "persist"}>
+            <div class="options-submenu">
+              <button type="button" classList={{ active: !props.persist }} onClick={() => props.onPersistChange(false)}>
+                オフ (90日で自動削除) {!props.persist ? "✓" : ""}
+              </button>
+              <button type="button" classList={{ active: props.persist }} onClick={() => props.onPersistChange(true)}>
+                オン (永続) {props.persist ? "✓" : ""}
+              </button>
+            </div>
+          </Show>
+        </div>
+
+        <Show when={props.showMime}>
+          <div class="options-row">
+            <div class="options-item" {...submenuTriggerProps("mime")}>
+              <span>ファイル種別</span>
+              <span class="options-current">{props.mime ?? "txt"} ▸</span>
+            </div>
+            <Show when={submenu() === "mime"}>
+              <div class="options-submenu">
+                {(["md", "html", "txt"] as ArtifactMime[]).map((m) => (
+                  <button type="button" classList={{ active: props.mime === m }} onClick={() => props.onMimeChange?.(m)}>
+                    {m} {props.mime === m ? "✓" : ""}
+                  </button>
+                ))}
+              </div>
+            </Show>
+          </div>
         </Show>
 
         <Show when={props.showSlug}>

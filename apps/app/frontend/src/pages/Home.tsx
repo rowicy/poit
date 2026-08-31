@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createResource, For, Show, onCleanup, type Component } from "solid-js";
+import { createSignal, createEffect, createMemo, createResource, For, Show, onCleanup, type Component } from "solid-js";
 import { createStore } from "solid-js/store";
 import {
   type ArtifactMeta,
@@ -11,11 +11,11 @@ import {
 } from "../lib/api";
 import { detectMime } from "../lib/filekind";
 import OptionsMenu from "../components/OptionsMenu";
-import EditModal from "../components/EditModal";
 import ShareTrigger from "../components/ShareTrigger";
 import GuideModal from "../components/GuideModal";
 import Spinner from "../components/Spinner";
 import ArtifactRow from "../components/ArtifactRow";
+import FilterMenu, { type ArtifactFilters } from "../components/FilterMenu";
 
 type Status = { kind: "error" | "success"; message: string; url?: string } | null;
 
@@ -49,13 +49,22 @@ const Home: Component = () => {
   const [persist, setPersist] = createSignal(false);
   const [slug, setSlug] = createSignal("");
 
-  const [dropContent, setDropContent] = createSignal<{ name: string; content: string } | null>(null);
-  const [dropReading, setDropReading] = createSignal(false);
   const [sharing, setSharing] = createSignal(false);
   const [status, setStatus] = createSignal<Status>(null);
   const [guideOpen, setGuideOpen] = createSignal(false);
 
-  const [editing, setEditing] = createSignal<ArtifactMeta | null>(null);
+  const [filters, setFilters] = createSignal<ArtifactFilters>({ mime: "all", visibility: "all", persist: "all" });
+  const filteredArtifacts = createMemo(() => {
+    const f = filters();
+    return store.artifacts.filter((a) => {
+      if (f.mime !== "all" && a.mime !== f.mime) return false;
+      if (f.visibility !== "all" && a.visibility !== f.visibility) return false;
+      if (f.persist === "persist" && !a.persist) return false;
+      if (f.persist === "temporary" && a.persist) return false;
+      return true;
+    });
+  });
+  const filtersActive = () => filters().mime !== "all" || filters().visibility !== "all" || filters().persist !== "all";
 
   let fileInputRef: HTMLInputElement | undefined;
 
@@ -115,41 +124,8 @@ const Home: Component = () => {
     await submit(await file.text(), file.name);
   }
 
-  // Whole-page drag & drop. Content is read into a string the moment the
-  // drop happens (not deferred to the confirm click), so there is no async
-  // gap in which the file reference could go stale before Share is pressed.
-  const [dragActive, setDragActive] = createSignal(false);
-  let dragDepth = 0;
-  function onDragOver(e: DragEvent) {
-    e.preventDefault();
-  }
-  function onDragEnter(e: DragEvent) {
-    e.preventDefault();
-    dragDepth++;
-    setDragActive(true);
-  }
-  function onDragLeave(e: DragEvent) {
-    e.preventDefault();
-    dragDepth = Math.max(0, dragDepth - 1);
-    if (dragDepth === 0) setDragActive(false);
-  }
-  async function onDrop(e: DragEvent) {
-    e.preventDefault();
-    dragDepth = 0;
-    setDragActive(false);
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
-    setDropReading(true);
-    try {
-      setDropContent({ name: file.name, content: await file.text() });
-    } finally {
-      setDropReading(false);
-    }
-  }
-
   function onKeyDown(e: KeyboardEvent) {
     if (e.key === "Escape") {
-      setDropContent(null);
       setGuideOpen(false);
     }
   }
@@ -178,13 +154,8 @@ const Home: Component = () => {
     }
   }
 
-  function handleEditSaved(updated: ArtifactMeta) {
-    setEditing(null);
-    setStore("artifacts", (a) => a.id === updated.id, updated);
-  }
-
   return (
-    <div class="home" onDragOver={onDragOver} onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDrop={onDrop}>
+    <div class="home">
       <header class="site-header">
         <a href="/" class="brand">
           poit
@@ -196,26 +167,7 @@ const Home: Component = () => {
 
       <input type="file" ref={fileInputRef} hidden onChange={onFileChosen} />
 
-      <section class="share-field" classList={{ "drag-over": dragActive() }}>
-        <div class="drop-hint" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-            <path
-              d="M12 15V4m0 0 3.5 3.5M12 4 8.5 7.5"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <path
-              d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-          <span>ここにファイルをドラッグ&ドロップ</span>
-        </div>
+      <section class="share-field">
         <div class="share-stack">
           <ShareTrigger sharing={sharing()} onClipboard={fromClipboard} onFile={fromFile} />
           <OptionsMenu
@@ -244,62 +196,46 @@ const Home: Component = () => {
       </Show>
 
       <section class="card artifact-list-card">
-        <h2>アップロード済みアーティファクト</h2>
+        <div class="artifact-list-header">
+          <h2>アップロード済みアーティファクト</h2>
+          <Show when={store.artifacts.length > 0}>
+            <FilterMenu filters={filters()} onChange={setFilters} />
+          </Show>
+        </div>
         <Show when={!initial.loading} fallback={<Spinner label="読み込み中..." />}>
           <Show when={store.artifacts.length > 0} fallback={<p class="empty-state">まだ共有されたものはありません</p>}>
-            <ul class="artifact-list">
-              <For each={store.artifacts}>
-                {(a) => (
-                  <ArtifactRow
-                    artifact={a}
-                    onEdit={setEditing}
-                    onDelete={handleDelete}
-                    onSettingsChange={handleSettingsChange}
-                  />
-                )}
-              </For>
-            </ul>
+            <Show
+              when={filteredArtifacts().length > 0}
+              fallback={
+                <p class="empty-state">
+                  条件に一致するアーティファクトはありません。
+                  <Show when={filtersActive()}>
+                    {" "}
+                    <button
+                      type="button"
+                      class="ghost filter-clear-inline"
+                      onClick={() => setFilters({ mime: "all", visibility: "all", persist: "all" })}
+                    >
+                      フィルターを解除
+                    </button>
+                  </Show>
+                </p>
+              }
+            >
+              <ul class="artifact-list">
+                <For each={filteredArtifacts()}>
+                  {(a) => (
+                    <ArtifactRow artifact={a} onDelete={handleDelete} onSettingsChange={handleSettingsChange} />
+                  )}
+                </For>
+              </ul>
+            </Show>
           </Show>
         </Show>
       </section>
 
-      <Show when={dropReading()}>
-        <div class="modal-backdrop">
-          <div class="modal">
-            <Spinner label="ファイルを読み込み中..." />
-          </div>
-        </div>
-      </Show>
-
-      <Show when={dropContent()}>
-        {(file) => (
-          <div class="modal-backdrop" onClick={() => setDropContent(null)}>
-            <div class="modal" onClick={(e) => e.stopPropagation()}>
-              <h2>"{file().name}" を共有しますか?</h2>
-              <div class="modal-actions">
-                <button
-                  type="button"
-                  class="primary"
-                  onClick={() => {
-                    const f = file();
-                    setDropContent(null);
-                    submit(f.content, f.name);
-                  }}
-                >
-                  Share!
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </Show>
-
       <Show when={guideOpen()}>
         <GuideModal onClose={() => setGuideOpen(false)} />
-      </Show>
-
-      <Show when={editing()}>
-        {(a) => <EditModal artifact={a()} onClose={() => setEditing(null)} onSaved={handleEditSaved} />}
       </Show>
     </div>
   );
