@@ -10,6 +10,7 @@ import {
   updateArtifact,
 } from "../lib/api";
 import { detectMime } from "../lib/filekind";
+import { copyToClipboard } from "../lib/clipboard";
 import OptionsMenu from "../components/OptionsMenu";
 import ShareTrigger from "../components/ShareTrigger";
 import GuideModal from "../components/GuideModal";
@@ -22,15 +23,6 @@ type Status = { kind: "error" | "success"; message: string; url?: string } | nul
 // Keep in sync with apps/app/src/index.ts's SLUG_PATTERN and
 // cli/poit/cmd/share.go's slugPattern.
 const SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 const Home: Component = () => {
   const [initial] = createResource(async () => (await listArtifacts()).artifacts);

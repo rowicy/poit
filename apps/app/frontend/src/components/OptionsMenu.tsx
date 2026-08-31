@@ -8,6 +8,8 @@ export interface OptionsMenuProps {
   showSlug: boolean;
   mime?: ArtifactMime;
   showMime?: boolean;
+  /** Visible text next to the gear icon (e.g. "Option"); omit for icon-only. */
+  label?: string;
   onVisibilityChange: (v: Visibility) => void;
   onPersistChange: (p: boolean) => void;
   onSlugChange: (s: string) => void;
@@ -161,6 +163,9 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
             />
           </svg>
         </span>
+        <Show when={props.label}>
+          <span class="options-label">{props.label}</span>
+        </Show>
         <Show when={isChanged()}>
           <span class="options-badges">
             {changeBadges().map((b) => (

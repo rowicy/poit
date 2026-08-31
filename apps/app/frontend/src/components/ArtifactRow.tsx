@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, type Component } from "solid-js";
-import type { ArtifactMeta, ArtifactMime, Visibility } from "../lib/api";
+import { getArtifactRaw, type ArtifactMeta, type ArtifactMime, type Visibility } from "../lib/api";
+import { copyToClipboard } from "../lib/clipboard";
 import OptionsMenu from "./OptionsMenu";
 
 export interface ArtifactRowProps {
@@ -12,8 +13,11 @@ function visibilityLabel(v: Visibility): string {
   return v === "public" ? "公開" : "非公開";
 }
 
+const COPY_FLASH_MS = 1500;
+
 const ArtifactRow: Component<ArtifactRowProps> = (props) => {
   const [menuOpen, setMenuOpen] = createSignal(false);
+  const [copied, setCopied] = createSignal<"content" | "url" | null>(null);
   let rootRef: HTMLDivElement | undefined;
 
   function onDocumentClick(e: MouseEvent) {
@@ -26,6 +30,25 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
     if (e.key === "Escape" && menuOpen()) {
       e.stopPropagation();
       setMenuOpen(false);
+    }
+  }
+
+  function flashCopied(kind: "content" | "url") {
+    setCopied(kind);
+    setTimeout(() => setCopied((c) => (c === kind ? null : c)), COPY_FLASH_MS);
+  }
+
+  async function handleCopyUrl() {
+    const url = `${location.origin}/artifact/${props.artifact.id}`;
+    if (await copyToClipboard(url)) flashCopied("url");
+  }
+
+  async function handleCopyContent() {
+    try {
+      const { content } = await getArtifactRaw(props.artifact.id);
+      if (await copyToClipboard(content)) flashCopied("content");
+    } catch {
+      // Best-effort; the popover has no per-action error slot to surface this in.
     }
   }
 
@@ -56,6 +79,12 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
           ⋯
         </button>
         <div class="menu-popover">
+          <button type="button" onClick={handleCopyContent}>
+            {copied() === "content" ? "コピーしました" : "コンテンツをコピー"}
+          </button>
+          <button type="button" onClick={handleCopyUrl}>
+            {copied() === "url" ? "コピーしました" : "URLをコピー"}
+          </button>
           <div class="menu-settings-row">
             <OptionsMenu
               visibility={props.artifact.visibility}
@@ -64,6 +93,7 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
               showMime
               slug=""
               showSlug={false}
+              label="Option"
               onVisibilityChange={(v) => props.onSettingsChange(props.artifact.id, { visibility: v })}
               onPersistChange={(p) => props.onSettingsChange(props.artifact.id, { persist: p })}
               onMimeChange={(m) => props.onSettingsChange(props.artifact.id, { mime: m })}
