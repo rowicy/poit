@@ -39,7 +39,7 @@ md/html/txt アップロード・共有アプリ (旧称 ageage)。`poit.rowicy.
 
 ## キャッシュ/永続化戦略
 
-- `GET /artifact/<id>/raw`(JSON: `{artifact, content}`)と`GET /artifact/raw/<id>`(本文をそのまま返す。`Content-Type`はmimeに応じて`text/markdown`/`text/html`/`text/plain`)の**公開**アーティファクトはどちらもCloudflareのCache API (`caches.default`) でエッジキャッシュする(`Cache-Control: public, max-age=60, s-maxage=31536000`)。同じ共有リンクが多数回閲覧される想定のため。PUT/DELETE成功時に両方のキャッシュキーを明示的に`cache.delete()`するので、編集・削除後に古い内容が配信され続けることはない。private なアーティファクトはどちらもキャッシュせず、所有者本人のみ読める(BOLAガード)。
+- `GET /artifact/<id>/json`(JSON: `{artifact, content}`)と、`GET /artifact/<id>/raw`/`GET /artifact/raw/<id>`(この2つは同一ハンドラのエイリアス。本文をそのまま返す。`Content-Type`はmimeに応じて`text/markdown`/`text/html`/`text/plain`)の**公開**アーティファクトはどちらもCloudflareのCache API (`caches.default`) でエッジキャッシュする(`Cache-Control: public, max-age=60, s-maxage=31536000`)。同じ共有リンクが多数回閲覧される想定のため。PUT/DELETE成功時に両方のキャッシュキーを明示的に`cache.delete()`するので、編集・削除後に古い内容が配信され続けることはない。private なアーティファクトはどちらもキャッシュせず、所有者本人のみ読める(BOLAガード)。
 - 永続化オフ(default)のアーティファクトは、KVの`expirationTtl`(残りTTL秒数、最低60秒)と、R2の`ephemeral/`プレフィックス向けLifecycle Rule(**90日**で削除)によりネイティブに自動削除される。この90日はapps/app/src/store.tsの`DEFAULT_TTL_SECONDS`とinfra/main.tfのlifecycle ruleで値を合わせているので、変更する場合は両方直すこと。cronによる全件スキャンは行わず、`scheduled()`はごく軽量なセーフティネットとしてのみ残している。
 - `apps/app/public`(=Viteのビルド出力)は `pnpm --filter poit-app build:frontend` のたびに再生成される。`/assets/*` はVite側でcontent hashが付くファイル名なので `Cache-Control: public, max-age=31536000, immutable`、手動で置いている `/wasm/*` (filekind.wasm/wasm_exec.js、ハッシュなし)は `max-age=3600`。設定は `apps/app/frontend/public/_headers` に書き、Terraformの`assets.config.headers`に`file()`で渡す(このプロバイダは`_headers`ファイルを自動検出しないため)。
 
@@ -47,7 +47,7 @@ md/html/txt アップロード・共有アプリ (旧称 ageage)。`poit.rowicy.
 
 - ブラウザ (`/`): Cloudflare Access で rowicy メンバー (許可メールアドレス) のみログイン可能。ログイン後の `CF_Authorization` Cookie を Worker 自身が検証する。
 - `/api/v1/artifacts` (GET) と `/api/v1/artifact` (POST/PUT/DELETE) は上記と**同じ** Access Application (同一aud) が保護する。別appに分けると、ブラウザ側の1つのAccessセッションではもう一方のaud向けJWTを持たず、SPAの`fetch()`がクロスオリジンのログインページへ302されてブラウザに`Load failed`という不透明なネットワークエラーとして見える不具合があったため、1つのAccess Applicationに統合している。
-- `/artifact/<id>`、`/artifact/<id>/raw`、`/artifact/raw/<id>`、`/assets/*`: Access のパスマッチはプレフィックス一致のみで HTTP メソッド単位の制御ができないため、この配下は Access の対象外 (bypass) にして誰でも到達可能にし、private なアーティファクトかどうかは Worker 側で Cookie/JWT を検証して判定する。
+- `/artifact/<id>`、`/artifact/<id>/json`、`/artifact/<id>/raw`、`/artifact/raw/<id>`、`/assets/*`: Access のパスマッチはプレフィックス一致のみで HTTP メソッド単位の制御ができないため、この配下は Access の対象外 (bypass) にして誰でも到達可能にし、private なアーティファクトかどうかは Worker 側で Cookie/JWT を検証して判定する。
 - `/wasm/*` (filekindのWASM) はこのbypass対象外 = Accessで保護されたまま。ホーム画面(要ログイン)からのみ使う想定のため問題ない。
 
 ## デプロイ手順

@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, type Component } from "solid-js";
-import { getArtifactRaw, type ArtifactMeta, type ArtifactMime, type Visibility } from "../lib/api";
+import { getArtifactJson, type ArtifactMeta, type ArtifactMime, type Visibility } from "../lib/api";
 import { copyToClipboard } from "../lib/clipboard";
 import OptionsMenu from "./OptionsMenu";
 
@@ -45,7 +45,7 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
 
   async function handleCopyContent() {
     try {
-      const { content } = await getArtifactRaw(props.artifact.id);
+      const { content } = await getArtifactJson(props.artifact.id);
       if (await copyToClipboard(content)) flashCopied("content");
     } catch {
       // Best-effort; the popover has no per-action error slot to surface this in.

@@ -76,16 +76,18 @@ function requireAuth(request: Request, env: Env) {
   return verifyAccess(request, env.CF_ACCESS_TEAM_DOMAIN, env.CF_ACCESS_AUD);
 }
 
-function rawCacheKey(origin: string, id: string): Request {
-  return new Request(`${origin}/artifact/${id}/raw`);
+function jsonCacheKey(origin: string, id: string): Request {
+  return new Request(`${origin}/artifact/${id}/json`);
 }
 
+// /artifact/<id>/raw and /artifact/raw/<id> are aliases for the same
+// handler/response, so they share one cache entry.
 function rawTextCacheKey(origin: string, id: string): Request {
   return new Request(`${origin}/artifact/raw/${id}`);
 }
 
-function purgeRawCaches(ctx: ExecutionContext, origin: string, id: string): void {
-  ctx.waitUntil(caches.default.delete(rawCacheKey(origin, id)));
+function purgeArtifactCaches(ctx: ExecutionContext, origin: string, id: string): void {
+  ctx.waitUntil(caches.default.delete(jsonCacheKey(origin, id)));
   ctx.waitUntil(caches.default.delete(rawTextCacheKey(origin, id)));
 }
 
@@ -200,7 +202,7 @@ async function handleApi(
       if (!meta) return json({ error: "not found" }, { status: 404 });
       if (meta.owner !== identity.email) return json({ error: "forbidden" }, { status: 403 });
       await deleteArtifact(env.ARTIFACTS, env.METADATA, id, meta.persist);
-      purgeRawCaches(ctx, url.origin, id);
+      purgeArtifactCaches(ctx, url.origin, id);
       return new Response(null, { status: 204 });
     }
 
@@ -238,7 +240,7 @@ async function handleApi(
         ...(info ? { title: info.title, excerpt: info.excerpt } : {}),
       };
       await putArtifact(env.ARTIFACTS, env.METADATA, meta, content, existing.meta.persist);
-      purgeRawCaches(ctx, url.origin, id);
+      purgeArtifactCaches(ctx, url.origin, id);
       return json({ artifact: meta });
     }
   }
@@ -253,14 +255,14 @@ async function handleApi(
 // the edge (Cache API) since the same shared link is often opened by many
 // viewers; PUT/DELETE above explicitly purge this cache entry so an edit or
 // delete can never keep serving stale content.
-async function handleArtifactRaw(
+async function handleArtifactJson(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
   id: string
 ): Promise<Response> {
   const cache = caches.default;
-  const cacheKey = rawCacheKey(new URL(request.url).origin, id);
+  const cacheKey = jsonCacheKey(new URL(request.url).origin, id);
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
@@ -279,9 +281,10 @@ async function handleArtifactRaw(
   return response;
 }
 
-// Same visibility/BOLA rules as handleArtifactRaw above, but returns the
+// Same visibility/BOLA rules as handleArtifactJson above, but returns the
 // artifact's body as-is (no JSON envelope) for consumers that want the
 // content directly - e.g. `curl`, piping into another tool, or embedding.
+// Reachable at two aliased paths (see the fetch handler below).
 async function handleArtifactRawText(
   request: Request,
   env: Env,
@@ -313,14 +316,17 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    const rawTextMatch = url.pathname.match(/^\/artifact\/raw\/([\w-]+)$/);
+    // /artifact/raw/<id> and /artifact/<id>/raw are aliases for the same
+    // plain-text response; /artifact/<id>/json is the JSON envelope.
+    const rawTextMatch =
+      url.pathname.match(/^\/artifact\/raw\/([\w-]+)$/) ?? url.pathname.match(/^\/artifact\/([\w-]+)\/raw$/);
     if (rawTextMatch) {
       return handleArtifactRawText(request, env, ctx, rawTextMatch[1]);
     }
 
-    const rawMatch = url.pathname.match(/^\/artifact\/([\w-]+)\/raw$/);
-    if (rawMatch) {
-      return handleArtifactRaw(request, env, ctx, rawMatch[1]);
+    const jsonMatch = url.pathname.match(/^\/artifact\/([\w-]+)\/json$/);
+    if (jsonMatch) {
+      return handleArtifactJson(request, env, ctx, jsonMatch[1]);
     }
 
     if (url.pathname.startsWith("/api/v1/")) {

@@ -1,12 +1,12 @@
 import { createResource, createSignal, createMemo, createEffect, Show, For, onCleanup, type Component } from "solid-js";
-import { ApiError, getArtifactRaw } from "../lib/api";
+import { ApiError, getArtifactJson } from "../lib/api";
 import Spinner from "../components/Spinner";
 import type * as MarkdownLib from "../lib/markdown";
 
 const AUTO_HIDE_THRESHOLD_PX = 72;
 
 const ArtifactPage: Component<{ id: string }> = (props) => {
-  const [data] = createResource(() => props.id, (id) => getArtifactRaw(id));
+  const [data] = createResource(() => props.id, (id) => getArtifactJson(id));
 
   const [menuVisible, setMenuVisible] = createSignal(true);
   const [tocOpen, setTocOpen] = createSignal(false);

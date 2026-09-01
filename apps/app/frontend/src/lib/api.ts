@@ -72,6 +72,6 @@ export function deleteArtifact(id: string): Promise<void> {
   return apiFetch(`/api/v1/artifact/${id}`, { method: "DELETE" });
 }
 
-export function getArtifactRaw(id: string): Promise<{ artifact: ArtifactMeta; content: string }> {
-  return apiFetch(`/artifact/${id}/raw`);
+export function getArtifactJson(id: string): Promise<{ artifact: ArtifactMeta; content: string }> {
+  return apiFetch(`/artifact/${id}/json`);
 }

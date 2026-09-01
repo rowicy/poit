@@ -84,7 +84,7 @@ describe("poit API security", () => {
   });
 
   describe("API1: BOLA on private artifacts", () => {
-    it("owner can read their own private artifact via /artifact/:id/raw", async () => {
+    it("owner can read their own private artifact via /artifact/:id/json", async () => {
       const created = await createArtifact("alice@example.com", {
         content: "# secret",
         visibility: "private",
@@ -92,7 +92,7 @@ describe("poit API security", () => {
       });
       expect(created.status).toBe(201);
 
-      const res = await authed("alice@example.com", "/artifact/alice-private-1/raw");
+      const res = await authed("alice@example.com", "/artifact/alice-private-1/json");
       expect(res.status).toBe(200);
     });
 
@@ -104,7 +104,7 @@ describe("poit API security", () => {
       });
       expect(created.status).toBe(201);
 
-      const res = await authed("bob@example.com", "/artifact/alice-private-2/raw");
+      const res = await authed("bob@example.com", "/artifact/alice-private-2/json");
       expect(res.status).toBe(403);
       const body = await res.json();
       expect(body).not.toHaveProperty("content");
@@ -118,7 +118,7 @@ describe("poit API security", () => {
       });
       expect(created.status).toBe(201);
 
-      const res = await anon("/artifact/alice-private-3/raw");
+      const res = await anon("/artifact/alice-private-3/json");
       expect(res.status).toBe(403);
     });
 
@@ -136,7 +136,7 @@ describe("poit API security", () => {
       expect(res.status).toBe(403);
 
       // content must be unchanged
-      const raw = await authed("alice@example.com", "/artifact/alice-put-1/raw");
+      const raw = await authed("alice@example.com", "/artifact/alice-put-1/json");
       const rawBody = await raw.json<{ content: string }>();
       expect(rawBody.content).toBe("# original");
     });
@@ -150,7 +150,7 @@ describe("poit API security", () => {
       const res = await authed("bob@example.com", "/api/v1/artifact/alice-delete-1", { method: "DELETE" });
       expect(res.status).toBe(403);
 
-      const raw = await authed("alice@example.com", "/artifact/alice-delete-1/raw");
+      const raw = await authed("alice@example.com", "/artifact/alice-delete-1/json");
       expect(raw.status).toBe(200);
     });
 
@@ -219,7 +219,7 @@ describe("poit API security", () => {
     });
   });
 
-  describe("API1: BOLA on /artifact/raw/:id (plain-text raw content)", () => {
+  describe("API1: BOLA on /artifact/raw/:id and its alias /artifact/:id/raw (plain-text raw content)", () => {
     it("owner can read their own private artifact's raw content", async () => {
       const created = await createArtifact("alice@example.com", {
         content: "# secret",
@@ -278,6 +278,21 @@ describe("poit API security", () => {
     it("returns 404, not a leaked 403, for an artifact that doesn't exist", async () => {
       const res = await anon("/artifact/raw/does-not-exist-xyz");
       expect(res.status).toBe(404);
+    });
+
+    it("/artifact/:id/raw is an alias for the same handler as /artifact/raw/:id", async () => {
+      const created = await createArtifact("alice@example.com", {
+        content: "# aliased",
+        visibility: "public",
+        slug: "alice-rawtext-alias-1",
+      });
+      expect(created.status).toBe(201);
+
+      const viaPrefix = await anon("/artifact/raw/alice-rawtext-alias-1");
+      const viaSuffix = await anon("/artifact/alice-rawtext-alias-1/raw");
+      expect(viaSuffix.status).toBe(200);
+      expect(await viaSuffix.text()).toBe(await viaPrefix.text());
+      expect(viaSuffix.headers.get("content-type")).toBe(viaPrefix.headers.get("content-type"));
     });
 
     it("a PUT by the owner invalidates the raw-text cache entry (no stale content served)", async () => {
