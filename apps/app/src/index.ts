@@ -80,6 +80,43 @@ function rawCacheKey(origin: string, id: string): Request {
   return new Request(`${origin}/artifact/${id}/raw`);
 }
 
+function rawTextCacheKey(origin: string, id: string): Request {
+  return new Request(`${origin}/artifact/raw/${id}`);
+}
+
+function purgeRawCaches(ctx: ExecutionContext, origin: string, id: string): void {
+  ctx.waitUntil(caches.default.delete(rawCacheKey(origin, id)));
+  ctx.waitUntil(caches.default.delete(rawTextCacheKey(origin, id)));
+}
+
+const RAW_TEXT_CONTENT_TYPES: Record<ArtifactMeta["mime"], string> = {
+  md: "text/markdown; charset=utf-8",
+  html: "text/html; charset=utf-8",
+  txt: "text/plain; charset=utf-8",
+};
+
+type ReadableArtifact =
+  | { ok: true; meta: ArtifactMeta; content: string }
+  | { ok: false; response: Response };
+
+// Shared BOLA guard for both raw-read endpoints below: a private artifact
+// requires a valid identity that also happens to own it; public artifacts
+// are open to anyone (including unauthenticated callers).
+async function resolveReadableArtifact(request: Request, env: Env, id: string): Promise<ReadableArtifact> {
+  const existing = await getArtifact(env.ARTIFACTS, env.METADATA, id);
+  if (!existing) return { ok: false, response: json({ error: "not found" }, { status: 404 }) };
+
+  if (existing.meta.visibility === "private") {
+    const identity = await requireAuth(request, env);
+    if (!identity) return { ok: false, response: json({ error: "unauthorized" }, { status: 403 }) };
+    if (identity.email !== existing.meta.owner) {
+      return { ok: false, response: json({ error: "forbidden" }, { status: 403 }) };
+    }
+  }
+
+  return { ok: true, meta: existing.meta, content: existing.content };
+}
+
 async function parseJsonBody<T>(request: Request): Promise<T | null> {
   try {
     return await request.json<T>();
@@ -163,7 +200,7 @@ async function handleApi(
       if (!meta) return json({ error: "not found" }, { status: 404 });
       if (meta.owner !== identity.email) return json({ error: "forbidden" }, { status: 403 });
       await deleteArtifact(env.ARTIFACTS, env.METADATA, id, meta.persist);
-      ctx.waitUntil(caches.default.delete(rawCacheKey(url.origin, id)));
+      purgeRawCaches(ctx, url.origin, id);
       return new Response(null, { status: 204 });
     }
 
@@ -201,7 +238,7 @@ async function handleApi(
         ...(info ? { title: info.title, excerpt: info.excerpt } : {}),
       };
       await putArtifact(env.ARTIFACTS, env.METADATA, meta, content, existing.meta.persist);
-      ctx.waitUntil(caches.default.delete(rawCacheKey(url.origin, id)));
+      purgeRawCaches(ctx, url.origin, id);
       return json({ artifact: meta });
     }
   }
@@ -227,21 +264,47 @@ async function handleArtifactRaw(
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
-  const existing = await getArtifact(env.ARTIFACTS, env.METADATA, id);
-  if (!existing) return json({ error: "not found" }, { status: 404 });
+  const result = await resolveReadableArtifact(request, env, id);
+  if (!result.ok) return result.response;
 
-  if (existing.meta.visibility === "private") {
-    const identity = await requireAuth(request, env);
-    if (!identity) return json({ error: "unauthorized" }, { status: 403 });
-    // BOLA guard: being logged in isn't enough, this artifact must be yours.
-    if (identity.email !== existing.meta.owner) return json({ error: "forbidden" }, { status: 403 });
-    return json({ artifact: existing.meta, content: existing.content });
+  if (result.meta.visibility === "private") {
+    return json({ artifact: result.meta, content: result.content });
   }
 
   const response = json(
-    { artifact: existing.meta, content: existing.content },
+    { artifact: result.meta, content: result.content },
     { headers: { "cache-control": "public, max-age=60, s-maxage=31536000" } }
   );
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+}
+
+// Same visibility/BOLA rules as handleArtifactRaw above, but returns the
+// artifact's body as-is (no JSON envelope) for consumers that want the
+// content directly - e.g. `curl`, piping into another tool, or embedding.
+async function handleArtifactRawText(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  id: string
+): Promise<Response> {
+  const cache = caches.default;
+  const cacheKey = rawTextCacheKey(new URL(request.url).origin, id);
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
+  const result = await resolveReadableArtifact(request, env, id);
+  if (!result.ok) return result.response;
+
+  const contentType = RAW_TEXT_CONTENT_TYPES[result.meta.mime];
+
+  if (result.meta.visibility === "private") {
+    return new Response(result.content, { headers: { "content-type": contentType, ...NO_STORE } });
+  }
+
+  const response = new Response(result.content, {
+    headers: { "content-type": contentType, "cache-control": "public, max-age=60, s-maxage=31536000" },
+  });
   ctx.waitUntil(cache.put(cacheKey, response.clone()));
   return response;
 }
@@ -249,6 +312,11 @@ async function handleArtifactRaw(
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    const rawTextMatch = url.pathname.match(/^\/artifact\/raw\/([\w-]+)$/);
+    if (rawTextMatch) {
+      return handleArtifactRawText(request, env, ctx, rawTextMatch[1]);
+    }
 
     const rawMatch = url.pathname.match(/^\/artifact\/([\w-]+)\/raw$/);
     if (rawMatch) {

@@ -102,4 +102,50 @@ describe("verifyAccess", () => {
     const req = new Request("https://poit.example.com/");
     expect(await verifyAccess(req, TEAM, AUD)).toBeNull();
   });
+
+  it("rejects a malformed token (not three dot-separated parts)", async () => {
+    expect(await verifyAccess(reqWithToken("not-a-valid-jwt"), TEAM, AUD)).toBeNull();
+  });
+
+  it("rejects a token with no kid in the header", async () => {
+    const b64url = (s: string) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+    const payload = b64url(
+      JSON.stringify({ email: "a@example.com", sub: "s", aud: [AUD], exp: Math.floor(Date.now() / 1000) + 3600 })
+    );
+    expect(await verifyAccess(reqWithToken(`${header}.${payload}.sig`), TEAM, AUD)).toBeNull();
+  });
+
+  it("rejects a token with no exp claim", async () => {
+    const { privateKey, jwk } = await generateTestKeypair("noexp-kid");
+    const token = await signTestJwt(privateKey, jwk.kid, { email: "a@example.com", sub: "sub-1", aud: [AUD] });
+    expect(await verifyAccess(reqWithToken(token), TEAM, AUD, fetchServing(jwk))).toBeNull();
+  });
+
+  it("rejects a kid that isn't in the JWKS, even after the forced refetch", async () => {
+    const { privateKey, jwk } = await generateTestKeypair("orphan-kid");
+    const token = await signTestJwt(privateKey, jwk.kid, {
+      email: "a@example.com",
+      sub: "sub-1",
+      aud: [AUD],
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    // JWKS never serves the signing key's kid, on the initial fetch or the
+    // forced retry - simulates a token signed with a key that was rotated
+    // out (or never belonged to this team) rather than merely stale-cached.
+    const unrelated = (await generateTestKeypair("unrelated-kid")).jwk;
+    expect(await verifyAccess(reqWithToken(token), TEAM, AUD, fetchServing(unrelated))).toBeNull();
+  });
+
+  it("fails closed when the JWKS endpoint is unreachable/erroring", async () => {
+    const { privateKey, jwk } = await generateTestKeypair("jwks-down-kid");
+    const token = await signTestJwt(privateKey, jwk.kid, {
+      email: "a@example.com",
+      sub: "sub-1",
+      aud: [AUD],
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const brokenFetch = (async () => new Response("service unavailable", { status: 503 })) as typeof fetch;
+    expect(await verifyAccess(reqWithToken(token), TEAM, AUD, brokenFetch)).toBeNull();
+  });
 });

@@ -85,12 +85,24 @@ export async function verifyAccess(
   const audList = Array.isArray(payload.aud) ? payload.aud : payload.aud ? [payload.aud] : [];
   if (accepted.length === 0 || !audList.some((a) => accepted.includes(a))) return null;
 
-  let keys = await getJwks(teamDomain, fetchImpl);
+  let keys: Jwk[];
+  try {
+    keys = await getJwks(teamDomain, fetchImpl);
+  } catch {
+    // Fail closed: an unreachable/erroring Access certs endpoint must not
+    // leave the caller unauthenticated-but-uncaught (throwing past here
+    // would surface as a 500 instead of a clean 403 at the call site).
+    return null;
+  }
   let jwk = keys.find((k) => k.kid === header.kid);
   if (!jwk) {
     // Unknown kid: could be a just-rotated-in signing key, not necessarily
     // an invalid token. Force one bypass-cache refetch before rejecting.
-    keys = await getJwks(teamDomain, fetchImpl, true);
+    try {
+      keys = await getJwks(teamDomain, fetchImpl, true);
+    } catch {
+      return null;
+    }
     jwk = keys.find((k) => k.kid === header.kid);
     if (!jwk) return null;
   }

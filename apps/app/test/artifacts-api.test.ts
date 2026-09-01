@@ -153,6 +153,152 @@ describe("poit API security", () => {
       const raw = await authed("alice@example.com", "/artifact/alice-delete-1/raw");
       expect(raw.status).toBe(200);
     });
+
+    it("the owner can delete their own artifact, which is then gone", async () => {
+      await createArtifact("alice@example.com", {
+        content: "# original",
+        visibility: "public",
+        slug: "alice-delete-success-1",
+      });
+      const res = await authed("alice@example.com", "/api/v1/artifact/alice-delete-success-1", {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(204);
+
+      const raw = await anon("/artifact/alice-delete-success-1/raw");
+      expect(raw.status).toBe(404);
+    });
+  });
+
+  describe("API2: authentication is enforced on every mutating/gated endpoint", () => {
+    it("rejects an unauthenticated POST /api/v1/artifact", async () => {
+      const res = await anon("/api/v1/artifact", {
+        method: "POST",
+        body: JSON.stringify({ content: "# nope" }),
+        headers: { "content-type": "application/json" },
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("rejects an unauthenticated PUT /api/v1/artifact/:id", async () => {
+      await createArtifact("alice@example.com", { content: "# original", slug: "anon-put-1" });
+      const res = await anon("/api/v1/artifact/anon-put-1", {
+        method: "PUT",
+        body: JSON.stringify({ content: "# hijacked" }),
+        headers: { "content-type": "application/json" },
+      });
+      expect(res.status).toBe(403);
+
+      const raw = await authed("alice@example.com", "/artifact/raw/anon-put-1");
+      expect(await raw.text()).toBe("# original");
+    });
+
+    it("rejects an unauthenticated DELETE /api/v1/artifact/:id", async () => {
+      await createArtifact("alice@example.com", { content: "# original", slug: "anon-delete-1" });
+      const res = await anon("/api/v1/artifact/anon-delete-1", { method: "DELETE" });
+      expect(res.status).toBe(403);
+
+      const raw = await authed("alice@example.com", "/artifact/raw/anon-delete-1");
+      expect(raw.status).toBe(200);
+    });
+
+    it("rejects an unauthenticated GET / (the SPA shell)", async () => {
+      const res = await anon("/");
+      expect(res.status).toBe(403);
+    });
+
+    it("an authenticated caller passes the Access gate on GET / and reaches asset serving", async () => {
+      const token = await tokenFor("alice@example.com");
+      const request = new Request(`${ORIGIN}/`, { headers: { "Cf-Access-Jwt-Assertion": token } });
+      const stubAssets = { fetch: async () => new Response("<html>ok</html>", { status: 200 }) } as Fetcher;
+      const ctx = createExecutionContext();
+      const response = await worker.fetch(request, { ...env, ASSETS: stubAssets }, ctx);
+      await waitOnExecutionContext(ctx);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("<html>ok</html>");
+    });
+  });
+
+  describe("API1: BOLA on /artifact/raw/:id (plain-text raw content)", () => {
+    it("owner can read their own private artifact's raw content", async () => {
+      const created = await createArtifact("alice@example.com", {
+        content: "# secret",
+        visibility: "private",
+        slug: "alice-rawtext-private-1",
+      });
+      expect(created.status).toBe(201);
+
+      const res = await authed("alice@example.com", "/artifact/raw/alice-rawtext-private-1");
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("# secret");
+      expect(res.headers.get("content-type")).toContain("text/markdown");
+    });
+
+    it("a different authenticated user cannot read another user's private raw content", async () => {
+      const created = await createArtifact("alice@example.com", {
+        content: "# secret",
+        visibility: "private",
+        slug: "alice-rawtext-private-2",
+      });
+      expect(created.status).toBe(201);
+
+      const res = await authed("bob@example.com", "/artifact/raw/alice-rawtext-private-2");
+      expect(res.status).toBe(403);
+      const body = await res.text();
+      expect(body).not.toContain("secret");
+    });
+
+    it("an unauthenticated caller cannot read a private artifact's raw content", async () => {
+      const created = await createArtifact("alice@example.com", {
+        content: "# secret",
+        visibility: "private",
+        slug: "alice-rawtext-private-3",
+      });
+      expect(created.status).toBe(201);
+
+      const res = await anon("/artifact/raw/alice-rawtext-private-3");
+      expect(res.status).toBe(403);
+      const body = await res.text();
+      expect(body).not.toContain("secret");
+    });
+
+    it("anyone (including unauthenticated) can read a public artifact's raw content", async () => {
+      const created = await createArtifact("alice@example.com", {
+        content: "# public doc",
+        visibility: "public",
+        slug: "alice-rawtext-public-1",
+      });
+      expect(created.status).toBe(201);
+
+      const res = await anon("/artifact/raw/alice-rawtext-public-1");
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("# public doc");
+    });
+
+    it("returns 404, not a leaked 403, for an artifact that doesn't exist", async () => {
+      const res = await anon("/artifact/raw/does-not-exist-xyz");
+      expect(res.status).toBe(404);
+    });
+
+    it("a PUT by the owner invalidates the raw-text cache entry (no stale content served)", async () => {
+      await createArtifact("alice@example.com", {
+        content: "# original",
+        visibility: "public",
+        slug: "alice-rawtext-cache-1",
+      });
+      const first = await anon("/artifact/raw/alice-rawtext-cache-1");
+      expect(await first.text()).toBe("# original");
+
+      const put = await authed("alice@example.com", "/api/v1/artifact/alice-rawtext-cache-1", {
+        method: "PUT",
+        body: JSON.stringify({ content: "# updated" }),
+        headers: { "content-type": "application/json" },
+      });
+      expect(put.status).toBe(200);
+
+      const second = await anon("/artifact/raw/alice-rawtext-cache-1");
+      expect(await second.text()).toBe("# updated");
+    });
   });
 
   describe("API2/API5: list scoping (BFLA)", () => {
