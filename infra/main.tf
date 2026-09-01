@@ -5,6 +5,29 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  # State lives in R2 (S3-compatible API), not locally. Backend blocks can't
+  # read var.*, so bucket/key/endpoints are injected at `terraform init` time
+  # instead: run `terraform init -backend-config=backend.tfvars` with
+  #   bucket    = "tfstate"
+  #   key       = "poit/terraform.tfstate"
+  #   endpoints = { s3 = "https://<account_id>.r2.cloudflarestorage.com" }
+  # in that gitignored file (same *.tfvars rule as terraform.tfvars).
+  # Credentials are intentionally not set anywhere in this repo - supply them
+  # via the AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars before running
+  # any terraform command (R2 API token with Object Read and Write on the
+  # "tfstate" bucket, from the Cloudflare dashboard's R2 > Manage API tokens -
+  # not the same as var.cloudflare_api_token).
+  backend "s3" {
+    region                      = "auto"
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_region_validation      = true
+    skip_requesting_account_id  = true
+    skip_s3_checksum            = true
+    use_path_style              = true
+    use_lockfile                = true
+  }
 }
 
 provider "cloudflare" {
