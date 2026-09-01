@@ -96,6 +96,16 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
     return slideMode() ? s.slideTexts[slideIndex()] ?? "" : (data()?.content ?? "");
   });
 
+  // Frontmatter isn't part of the rendered body (renderMarkdown strips it) -
+  // shown instead as a property list above the content, only for the full
+  // document (a slide's raw text never contains the leading `---` block).
+  const frontmatter = createMemo(() => {
+    const d = data();
+    const lib = mdLib();
+    if (!d || !lib || d.artifact.mime !== "md") return [];
+    return lib.parseFrontmatter(d.content);
+  });
+
   // Renders into contentRef imperatively (rather than via a reactive
   // innerHTML prop) so collectHeadings/renderMermaidDiagrams run in the same
   // tick, right after the markup they inspect actually lands in the DOM.
@@ -191,7 +201,23 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
               </div>
 
               <Show when={mdLib()} fallback={<div class="md-content"><Spinner label="読み込み中..." /></div>}>
-                <div class="md-content" ref={contentRef} />
+                <div class="md-content">
+                  <Show when={!slideMode() && frontmatter().length > 0}>
+                    <div class="md-frontmatter">
+                      <For each={frontmatter()}>
+                        {(prop) => (
+                          <div class="md-frontmatter-row">
+                            <span class="md-frontmatter-key">{prop.key}</span>
+                            <span class="md-frontmatter-values">
+                              <For each={prop.values}>{(v) => <span class="md-frontmatter-chip">{v}</span>}</For>
+                            </span>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                  <div ref={contentRef} />
+                </div>
               </Show>
             </div>
           );

@@ -78,6 +78,59 @@ export function renderMarkdown(raw: string): string {
   return getMarkdownIt().render(stripFrontmatter(raw));
 }
 
+export interface FrontmatterProperty {
+  key: string;
+  values: string[];
+}
+
+function unquote(s: string): string {
+  const trimmed = s.trim();
+  if (trimmed.length >= 2 && /^(".*"|'.*')$/.test(trimmed)) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+/**
+ * Parses a leading YAML frontmatter block into key/value(s) pairs for
+ * display as document properties. Not a general YAML parser - only handles
+ * the shapes frontmatter actually uses: a scalar, an inline `[a, b]` list,
+ * or a block list of `- item` lines under a bare `key:`.
+ */
+export function parseFrontmatter(raw: string): FrontmatterProperty[] {
+  const match = raw.match(FRONTMATTER_RE);
+  if (!match) return [];
+  const body = match[0].replace(/^---\r?\n/, "").replace(/\r?\n?---\r?\n?$/, "");
+
+  const properties: FrontmatterProperty[] = [];
+  let current: FrontmatterProperty | null = null;
+
+  for (const line of body.split(/\r?\n/)) {
+    const listItem = line.match(/^\s+-\s*(.+)$/);
+    if (listItem && current) {
+      current.values.push(unquote(listItem[1]));
+      continue;
+    }
+
+    const kv = line.match(/^([^\s:][^:]*):\s*(.*)$/);
+    if (!kv) continue;
+    const [, key, rest] = kv;
+    current = { key: key.trim(), values: [] };
+    properties.push(current);
+
+    const value = rest.trim();
+    if (value === "") continue; // block list follows on subsequent lines
+    if (value.startsWith("[") && value.endsWith("]")) {
+      const inner = value.slice(1, -1).trim();
+      if (inner) current.values = inner.split(",").map(unquote).map((v) => v.trim());
+      continue;
+    }
+    current.values = [unquote(value)];
+  }
+
+  return properties.filter((p) => p.values.length > 0);
+}
+
 export interface HeadingInfo {
   level: number;
   text: string;

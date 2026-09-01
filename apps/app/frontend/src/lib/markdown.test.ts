@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdownStructure, renderMarkdown, stripFrontmatter } from "./markdown";
+import { parseFrontmatter, parseMarkdownStructure, renderMarkdown, stripFrontmatter } from "./markdown";
 
 describe("stripFrontmatter", () => {
   it("removes a leading YAML frontmatter block", () => {
@@ -42,6 +42,37 @@ describe("parseMarkdownStructure", () => {
     const raw = "| a | b |\n|---|---|\n| 1 | 2 |";
     const { slideTexts } = parseMarkdownStructure(raw);
     expect(slideTexts).toHaveLength(1);
+  });
+});
+
+describe("parseFrontmatter", () => {
+  it("returns [] when there is no frontmatter", () => {
+    expect(parseFrontmatter("# hi")).toEqual([]);
+  });
+
+  it("parses scalars, inline lists, and block lists", () => {
+    const raw = [
+      "---",
+      "title: My Doc",
+      'quoted: "hello world"',
+      "tags: [a, b, c]",
+      "authors:",
+      "  - Alice",
+      "  - Bob",
+      "---",
+      "# body",
+    ].join("\n");
+    expect(parseFrontmatter(raw)).toEqual([
+      { key: "title", values: ["My Doc"] },
+      { key: "quoted", values: ["hello world"] },
+      { key: "tags", values: ["a", "b", "c"] },
+      { key: "authors", values: ["Alice", "Bob"] },
+    ]);
+  });
+
+  it("skips a key with an empty inline list and no following block list", () => {
+    const raw = "---\ntags: []\ntitle: x\n---\nbody";
+    expect(parseFrontmatter(raw)).toEqual([{ key: "title", values: ["x"] }]);
   });
 });
 
