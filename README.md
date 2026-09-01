@@ -45,7 +45,7 @@ pnpm --filter poit-app build            # src/index.ts を esbuild で dist/inde
 pnpm --filter poit-app build:frontend   # filekind.wasmをビルド → Solid.js SPAをviteでビルド (apps/app/public に出力)
 cd infra
 source .env
-terraform init
+terraform init -backend-config=backend.tfvars
 terraform apply
 ```
 
