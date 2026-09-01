@@ -25,3 +25,9 @@ homebrew_casks:
       name: homebrew-tools
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/rowicy/poit"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/poit"]
+          end
