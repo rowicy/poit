@@ -3,26 +3,25 @@ version: 2
 project_name: poit
 
 builds:
-  - main: ./cli/poit
-    dir: .
+  - main: .
+    dir: ./cli/poit
     env: [CGO_ENABLED=0]
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: "checksums.txt"
 
-brews:
+homebrew_casks:
   - name: poit
     repository:
       owner: rowicy
       name: homebrew-tools
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    directory: Formula
     homepage: "https://github.com/rowicy/poit"
