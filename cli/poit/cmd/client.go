@@ -31,10 +31,12 @@ func apiURL() string {
 
 // createArtifact posts content to the poit API and returns the shareable URL.
 //
-// Authentication is handled by Cloudflare Access: a Service Token issued for
-// the CLI is sent as CF-Access-Client-Id/Secret headers, which Access
-// verifies at the edge before the request ever reaches the Worker - no
-// Cloudflare SDK required.
+// Authentication is handled by Cloudflare Access. If a Service Token is
+// configured (POIT_CF_ACCESS_CLIENT_ID/SECRET) it's sent as
+// CF-Access-Client-Id/Secret headers. Otherwise we fall back to an
+// interactive browser login via the cloudflared CLI (see auth.go) and send
+// the resulting JWT as Cf-Access-Jwt-Assertion. Either way Access verifies
+// the request at the edge before it reaches the Worker.
 func createArtifact(req artifactRequest) (string, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -49,11 +51,16 @@ func createArtifact(req artifactRequest) (string, error) {
 
 	clientID := os.Getenv("POIT_CF_ACCESS_CLIENT_ID")
 	clientSecret := os.Getenv("POIT_CF_ACCESS_CLIENT_SECRET")
-	if clientID == "" || clientSecret == "" {
-		return "", fmt.Errorf("POIT_CF_ACCESS_CLIENT_ID / POIT_CF_ACCESS_CLIENT_SECRET must be set")
+	if clientID != "" && clientSecret != "" {
+		httpReq.Header.Set("CF-Access-Client-Id", clientID)
+		httpReq.Header.Set("CF-Access-Client-Secret", clientSecret)
+	} else {
+		jwt, err := ensureAccessJWT()
+		if err != nil {
+			return "", err
+		}
+		httpReq.Header.Set("Cf-Access-Jwt-Assertion", jwt)
 	}
-	httpReq.Header.Set("CF-Access-Client-Id", clientID)
-	httpReq.Header.Set("CF-Access-Client-Secret", clientSecret)
 
 	res, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
