@@ -104,15 +104,22 @@ type ReadableArtifact =
 // Shared BOLA guard for both raw-read endpoints below: a private artifact
 // requires a valid identity that also happens to own it; public artifacts
 // are open to anyone (including unauthenticated callers).
+//
+// No identity at all -> 401, so the SPA (see pages/Artifact.tsx) can tell
+// "not logged in" apart from "logged in but not allowed" and send the
+// browser through Cloudflare Access login instead of rendering an error.
+// Identity present but not the owner -> 404, not 403: a 403 would confirm to
+// any authenticated user that a private id exists, which is itself a BOLA
+// leak (mirrors the not-found branch above for the same id shape).
 async function resolveReadableArtifact(request: Request, env: Env, id: string): Promise<ReadableArtifact> {
   const existing = await getArtifact(env.ARTIFACTS, env.METADATA, id);
   if (!existing) return { ok: false, response: json({ error: "not found" }, { status: 404 }) };
 
   if (existing.meta.visibility === "private") {
     const identity = await requireAuth(request, env);
-    if (!identity) return { ok: false, response: json({ error: "unauthorized" }, { status: 403 }) };
+    if (!identity) return { ok: false, response: json({ error: "unauthorized" }, { status: 401 }) };
     if (identity.email !== existing.meta.owner) {
-      return { ok: false, response: json({ error: "forbidden" }, { status: 403 }) };
+      return { ok: false, response: json({ error: "not found" }, { status: 404 }) };
     }
   }
 

@@ -105,12 +105,12 @@ describe("poit API security", () => {
       expect(created.status).toBe(201);
 
       const res = await authed("bob@example.com", "/artifact/alice-private-2/json");
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
       const body = await res.json();
       expect(body).not.toHaveProperty("content");
     });
 
-    it("an unauthenticated caller cannot read a private artifact", async () => {
+    it("an unauthenticated caller cannot read a private artifact (401, so the SPA can send it to login)", async () => {
       const created = await createArtifact("alice@example.com", {
         content: "# secret",
         visibility: "private",
@@ -119,7 +119,7 @@ describe("poit API security", () => {
       expect(created.status).toBe(201);
 
       const res = await anon("/artifact/alice-private-3/json");
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(401);
     });
 
     it("a different user cannot PUT another user's artifact", async () => {
@@ -243,12 +243,12 @@ describe("poit API security", () => {
       expect(created.status).toBe(201);
 
       const res = await authed("bob@example.com", "/artifact/raw/alice-rawtext-private-2");
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
       const body = await res.text();
       expect(body).not.toContain("secret");
     });
 
-    it("an unauthenticated caller cannot read a private artifact's raw content", async () => {
+    it("an unauthenticated caller cannot read a private artifact's raw content (401)", async () => {
       const created = await createArtifact("alice@example.com", {
         content: "# secret",
         visibility: "private",
@@ -257,7 +257,7 @@ describe("poit API security", () => {
       expect(created.status).toBe(201);
 
       const res = await anon("/artifact/raw/alice-rawtext-private-3");
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(401);
       const body = await res.text();
       expect(body).not.toContain("secret");
     });

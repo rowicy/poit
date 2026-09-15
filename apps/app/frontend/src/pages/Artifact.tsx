@@ -16,6 +16,15 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
   let contentRef: HTMLDivElement | undefined;
   let headingEls: HTMLElement[] = [];
 
+  // A private artifact with no valid Access identity comes back as 401 (see
+  // resolveReadableArtifact in src/index.ts) - send the browser through
+  // Cloudflare Access login (via "/", which Access actually protects) and
+  // back to this same page, instead of rendering an error.
+  const needsLogin = () => data.error instanceof ApiError && data.error.status === 401;
+  createEffect(() => {
+    if (needsLogin()) location.href = "/?next=" + encodeURIComponent(location.pathname);
+  });
+
   function onMouseMove(e: MouseEvent) {
     setMenuVisible(e.clientY < AUTO_HIDE_THRESHOLD_PX);
   }
@@ -119,7 +128,7 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
   });
 
   return (
-    <Show when={!data.loading} fallback={<Spinner label="読み込み中..." />}>
+    <Show when={!data.loading && !needsLogin()} fallback={<Spinner label="読み込み中..." />}>
       <Show
         when={!data.error}
         fallback={
