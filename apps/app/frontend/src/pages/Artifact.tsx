@@ -35,7 +35,13 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
   // turns out to be Markdown, never for html/txt views (this replaces
   // solid-markdown-wasm, whose WASM binary bundled mermaid/katex we never
   // used and rendering we couldn't fix - see ../lib/markdown.ts).
+  //
+  // data() throws when the resource has errored (e.g. the 401 above) -
+  // guard on data.error first, same as the structure() memo below, so this
+  // effect doesn't crash and take the whole reactive flush (including the
+  // 401 redirect effect above) down with it.
   createEffect(() => {
+    if (data.error) return;
     if (data()?.artifact.mime === "md" && !mdLib()) {
       import("../lib/markdown").then(setMdLib);
     }
@@ -109,6 +115,7 @@ const ArtifactPage: Component<{ id: string }> = (props) => {
   // shown instead as a property list above the content, only for the full
   // document (a slide's raw text never contains the leading `---` block).
   const frontmatter = createMemo(() => {
+    if (data.error) return [];
     const d = data();
     const lib = mdLib();
     if (!d || !lib || d.artifact.mime !== "md") return [];
