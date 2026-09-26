@@ -7,9 +7,11 @@ const defaultAPIURL = "https://poit.rowicy.com/api/v1"
 // Root returns the poit CLI's root command.
 func Root() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "poit",
-		Short: "poit - md/html/txt artifact sharing CLI",
+		Use:           "poit",
+		Short:         "poit - md/html/txt artifact sharing CLI",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
-	root.AddCommand(shareCmd())
+	root.AddCommand(shareCmd(), lsCmd(), pullCmd())
 	return root
 }
