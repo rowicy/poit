@@ -40,8 +40,3 @@ brew install poit
 ## デプロイ手順
 
 mainへマージ
-
-
-
-
-&nbsp;
