@@ -65,11 +65,6 @@ resource "cloudflare_r2_bucket_lifecycle" "artifacts" {
   }]
 }
 
-resource "cloudflare_zero_trust_access_service_token" "cli" {
-  account_id = var.cloudflare_account_id
-  name       = "poit-cli"
-}
-
 resource "cloudflare_zero_trust_access_policy" "members_or_cli_allow" {
   account_id = var.cloudflare_account_id
   name       = "allow-rowicy-members-or-cli"
@@ -79,7 +74,6 @@ resource "cloudflare_zero_trust_access_policy" "members_or_cli_allow" {
     # account_id omitted = members of this account. The "cloudflare" login
     # method also has restrict_to_account_members on (set in the dashboard).
     { cloudflare_account_member = {} },
-    { service_token = { token_id = cloudflare_zero_trust_access_service_token.cli.id } },
   ]
 }
 
