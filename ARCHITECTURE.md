@@ -18,7 +18,7 @@ md/html/txt を共有するアプリ。`apps/`, `cli/`, `infra/` の3つが1つ�
 ## 三者間の契約(ここが壊れるとクロスカッティングなバグになる)
 
 1. **APIコントラクト**: `apps/app/src/index.ts` の `ArtifactWriteBody`(content/filename/slug/visibility/persist)と、`cli/poit/cmd/client.go` の `artifactRequest` struct、`apps/app/frontend/src/lib/api.ts` の `createArtifact`/`updateArtifact` は同じJSON形状でなければならない。どれか1つだけ変更すると、他が動かなくなる。
-2. **認証**: CLIは `CF-Access-Client-Id`/`CF-Access-Client-Secret` ヘッダ(環境変数 `POIT_CF_ACCESS_CLIENT_ID`/`POIT_CF_ACCESS_CLIENT_SECRET`)、SPAは `CF_Authorization` Cookie。どちらも最終的に `infra/main.tf` の `cloudflare_zero_trust_access_policy.members_or_cli_allow` に登録されたService Token/メールでしか通らない。Access Applicationを分割すると(過去に実際に起きた `Load failed` バグ)、SPAのfetch()が壊れる。
+2. **認証**: CLIは `CF-Access-Client-Id`/`CF-Access-Client-Secret` ヘッダ(環境変数 `POIT_CF_ACCESS_CLIENT_ID`/`POIT_CF_ACCESS_CLIENT_SECRET`)、SPAは `CF_Authorization` Cookie。どちらも最終的に `infra/main.tf` の `cloudflare_zero_trust_access_policy.members_or_cli_allow` に登録されたService Token/Cloudflareアカウントのメンバーでしか通らない。Access Applicationを分割すると(過去に実際に起きた `Load failed` バグ)、SPAのfetch()が壊れる。
 3. **デフォルトTTL(90日)は2箇所で値を合わせる必要がある**:
    - `apps/app/src/store.ts` の `DEFAULT_TTL_SECONDS`
    - `infra/main.tf` の `cloudflare_r2_bucket_lifecycle` の `max_age`
