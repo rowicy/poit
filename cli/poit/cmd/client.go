@@ -43,11 +43,8 @@ type artifactMeta struct {
 // doRequest sends an authenticated request and returns the response body,
 // erroring on a non-2xx status.
 //
-// Authentication is handled by Cloudflare Access. If a Service Token is
-// configured (POIT_CF_ACCESS_CLIENT_ID/SECRET) it's sent as
-// CF-Access-Client-Id/Secret headers. Otherwise we fall back to an
-// interactive browser login (see auth.go) and send the resulting JWT as
-// Cf-Access-Jwt-Assertion. For /api/v1/* Access verifies the request at the
+// Authentication is handled by Cloudflare Access: an interactive browser
+// login (see auth.go) yields a per-user JWT, sent as Cf-Access-Jwt-Assertion. For /api/v1/* Access verifies the request at the
 // edge; /artifact/* is left open at the edge and the Worker checks the JWT.
 func doRequest(method, rawURL string, body []byte) ([]byte, error) {
 	var reader io.Reader
@@ -62,18 +59,11 @@ func doRequest(method, rawURL string, body []byte) ([]byte, error) {
 		httpReq.Header.Set("content-type", "application/json")
 	}
 
-	clientID := os.Getenv("POIT_CF_ACCESS_CLIENT_ID")
-	clientSecret := os.Getenv("POIT_CF_ACCESS_CLIENT_SECRET")
-	if clientID != "" && clientSecret != "" {
-		httpReq.Header.Set("CF-Access-Client-Id", clientID)
-		httpReq.Header.Set("CF-Access-Client-Secret", clientSecret)
-	} else {
-		jwt, err := ensureAccessJWT()
-		if err != nil {
-			return nil, err
-		}
-		httpReq.Header.Set("Cf-Access-Jwt-Assertion", jwt)
+	jwt, err := ensureAccessJWT()
+	if err != nil {
+		return nil, err
 	}
+	httpReq.Header.Set("Cf-Access-Jwt-Assertion", jwt)
 
 	res, err := http.DefaultClient.Do(httpReq)
 	if err != nil {

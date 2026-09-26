@@ -12,13 +12,13 @@ md/html/txt を共有するアプリ。`apps/`, `cli/`, `infra/` の3つが1つ�
   - mime判定は `src/mime.ts` (後述、Go実装の手動TS移植)、title/excerpt抽出は `src/metadata.ts`
 - **apps/app/frontend** — Solid.js + Vite製SPAのソース。`apps/app/public`(Terraformが参照する静的アセットdir)にビルドする。
 - **apps/app/wasm/filekind** — mime判定ライブラリをブラウザ向けにGo-WASMビルドするためのGoソース(実行はしない、ビルド専用モジュール)。
-- **cli/poit** — Go製CLI。同じ `/api/v1/artifact` APIをCloudflare Access Service Token経由で叩く。
-- **infra** — Terraform。Worker本体(コード/静的アセット/バインディング/カスタムドメイン/cron)、R2、KV、Access Application/Policy、Service Tokenをすべて管理。`wrangler deploy`は使わず、`terraform apply`が唯一のデプロイ手段(ローカル実行)。
+- **cli/poit** — Go製CLI。同じ `/api/v1/artifact` APIを、ブラウザログイン(`cmd/auth.go`、cloudflaredと同じtransferフロー)で得た各ユーザーのAccess JWT(`Cf-Access-Jwt-Assertion` ヘッダ)で叩く。
+- **infra** — Terraform。Worker本体(コード/静的アセット/バインディング/カスタムドメイン/cron)、R2、KV、Access Application/Policyをすべて管理。`wrangler deploy`は使わず、`terraform apply`が唯一のデプロイ手段(mainへのマージで `.github/workflows/infra.yml` が実行)。
 
 ## 三者間の契約(ここが壊れるとクロスカッティングなバグになる)
 
 1. **APIコントラクト**: `apps/app/src/index.ts` の `ArtifactWriteBody`(content/filename/slug/visibility/persist)と、`cli/poit/cmd/client.go` の `artifactRequest` struct、`apps/app/frontend/src/lib/api.ts` の `createArtifact`/`updateArtifact` は同じJSON形状でなければならない。どれか1つだけ変更すると、他が動かなくなる。
-2. **認証**: CLIは `CF-Access-Client-Id`/`CF-Access-Client-Secret` ヘッダ(環境変数 `POIT_CF_ACCESS_CLIENT_ID`/`POIT_CF_ACCESS_CLIENT_SECRET`)、SPAは `CF_Authorization` Cookie。どちらも最終的に `infra/main.tf` の `cloudflare_zero_trust_access_policy.members_or_cli_allow` に登録されたService Token/Cloudflareアカウントのメンバーでしか通らない。Access Applicationを分割すると(過去に実際に起きた `Load failed` バグ)、SPAのfetch()が壊れる。
+2. **認証**: CLIは `Cf-Access-Jwt-Assertion` ヘッダ(`~/.poit/access_token.jwt` にキャッシュ)、SPAは `CF_Authorization` Cookie。どちらも `infra/main.tf` の `cloudflare_zero_trust_access_policy.members_or_cli_allow`(Cloudflareアカウントのメンバー)でしか通らない。CLIは `cmd/auth.go` の `accessAppAUD` に `shell` アプリのaudを埋め込んでいるので、`shell` を作り直したら更新が必要。Access Applicationを分割すると(過去に実際に起きた `Load failed` バグ)、SPAのfetch()が壊れる。
 3. **デフォルトTTL(90日)は2箇所で値を合わせる必要がある**:
    - `apps/app/src/store.ts` の `DEFAULT_TTL_SECONDS`
    - `infra/main.tf` の `cloudflare_r2_bucket_lifecycle` の `max_age`
@@ -37,5 +37,4 @@ md/html/txt を共有するアプリ。`apps/`, `cli/`, `infra/` の3つが1つ�
 
 ## 既知の制約
 
-- CLIのService Token認証(ヘッダ経由)は、Terraform側の設定は正しいことを確認済みだが、このCloudflareアカウントでのAccessエッジの実際の検証動作が確認できていない(README「既知の課題」参照)。
 - `solid-markdown-wasm` のWASM本体は大きい(gzip後 約10MB、mermaid/katex等を含む)。mdアーティファクト表示時のみ動的importで読み込むことで影響を局所化している(`Artifact.tsx`の`lazy()`)。
