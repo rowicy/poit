@@ -1,7 +1,5 @@
 ## コミットOK判定
 
-- Co-Authorがいないこと
-- Authorがriiimparm
 - lint通る
 
 ## push条件
