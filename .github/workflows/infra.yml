@@ -1,0 +1,65 @@
+name: Infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/app/**"
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/app/**"
+      - "infra/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+
+# Serialize applies; the R2 lockfile would reject a concurrent one anyway.
+concurrency:
+  group: infra
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    # Fork PRs get no secrets on a public repo, so plan would just fail.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "1"
+      TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+      TF_VAR_allowed_emails: ${{ secrets.ALLOWED_EMAILS }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL_S3: https://${{ vars.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: apps/app/wasm/filekind/go.sum
+      - run: pnpm install --frozen-lockfile
+      # main.tf reads dist/index.js and public/ - both are build outputs.
+      - run: pnpm --filter poit-app build
+      - run: pnpm --filter poit-app build:frontend
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+          terraform_wrapper: false
+      - run: terraform init -input=false
+        working-directory: infra
+      - run: terraform plan -input=false -out=tfplan
+        working-directory: infra
+      - if: github.event_name != 'pull_request'
+        run: terraform apply -input=false tfplan
+        working-directory: infra

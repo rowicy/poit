@@ -39,13 +39,15 @@ brew install poit
 
 ## デプロイ手順
 
+mainへのマージで `.github/workflows/infra.yml` が `terraform apply` する(PRでは `plan` のみ)。以下は緊急時にローカルから実行する場合の手順。`infra/.env` に `AWS_ENDPOINT_URL_S3` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `TF_VAR_*` を書いておく。
+
 ```sh
 pnpm install
 pnpm --filter poit-app build            # src/index.ts を esbuild で dist/index.js にバンドル (Worker本体)
 pnpm --filter poit-app build:frontend   # filekind.wasmをビルド → Solid.js SPAをviteでビルド (apps/app/public に出力)
 cd infra
 source .env
-terraform init -backend-config=backend.tfvars
+terraform init
 terraform apply
 ```
 
