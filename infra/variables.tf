@@ -11,12 +11,6 @@ variable "cloudflare_zone_id" {
   type = string
 }
 
-variable "allowed_emails" {
-  description = "rowicy members allowed to sign in via Cloudflare Access"
-  type        = list(string)
-  sensitive   = true
-}
-
 variable "github_owner" {
   type    = string
   default = ""

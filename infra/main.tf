@@ -75,10 +75,12 @@ resource "cloudflare_zero_trust_access_policy" "members_or_cli_allow" {
   name       = "allow-rowicy-members-or-cli"
   decision   = "allow"
 
-  include = concat(
-    [for email in var.allowed_emails : { email = { email = email } }],
-    [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.cli.id } }],
-  )
+  include = [
+    # account_id omitted = members of this account. The "cloudflare" login
+    # method also has restrict_to_account_members on (set in the dashboard).
+    { cloudflare_account_member = {} },
+    { service_token = { token_id = cloudflare_zero_trust_access_service_token.cli.id } },
+  ]
 }
 
 resource "cloudflare_zero_trust_access_policy" "bypass" {
