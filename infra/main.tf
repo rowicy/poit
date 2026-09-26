@@ -6,19 +6,17 @@ terraform {
     }
   }
 
-  # State lives in R2 (S3-compatible API), not locally. Backend blocks can't
-  # read var.*, so bucket/key/endpoints are injected at `terraform init` time
-  # instead: run `terraform init -backend-config=backend.tfvars` with
-  #   bucket    = "tfstate"
-  #   key       = "poit/terraform.tfstate"
-  #   endpoints = { s3 = "https://<account_id>.r2.cloudflarestorage.com" }
-  # in that gitignored file (same *.tfvars rule as terraform.tfvars).
-  # Credentials are intentionally not set anywhere in this repo - supply them
-  # via the AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars before running
-  # any terraform command (R2 API token with Object Read and Write on the
-  # "tfstate" bucket, from the Cloudflare dashboard's R2 > Manage API tokens -
-  # not the same as var.cloudflare_api_token).
+  # State lives in R2 (S3-compatible API), not locally. The endpoint contains
+  # the account ID, so it comes from the AWS_ENDPOINT_URL_S3 env var
+  # (https://<account_id>.r2.cloudflarestorage.com) instead of being
+  # hardcoded. Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+  # (R2 API token with Object Read and Write on the "tfstate" bucket, from
+  # the Cloudflare dashboard's R2 > Manage API tokens - not the same as
+  # var.cloudflare_api_token). CI sets all three; see
+  # .github/workflows/infra.yml.
   backend "s3" {
+    bucket                      = "tfstate"
+    key                         = "poit/terraform.tfstate"
     region                      = "auto"
     skip_credentials_validation = true
     skip_metadata_api_check     = true
@@ -145,9 +143,9 @@ resource "cloudflare_workers_script" "app" {
   account_id  = var.cloudflare_account_id
   script_name = "poit"
 
-  main_module     = "index.js"
-  content_file    = "${path.module}/../apps/app/dist/index.js"
-  content_sha256  = filesha256("${path.module}/../apps/app/dist/index.js")
+  main_module         = "index.js"
+  content_file        = "${path.module}/../apps/app/dist/index.js"
+  content_sha256      = filesha256("${path.module}/../apps/app/dist/index.js")
   compatibility_date  = "2026-08-01"
   compatibility_flags = ["nodejs_compat"]
 
