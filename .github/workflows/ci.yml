@@ -9,6 +9,10 @@ on:
       - "pnpm-workspace.yaml"
       - "package.json"
       - ".github/workflows/ci.yml"
+  # No paths filter: app/cli are required status checks on main (branch
+  # protection), so they must report on every PR or it can never merge.
+  pull_request:
+    branches: [main]
 
 jobs:
   app:
