@@ -31,10 +31,10 @@ homebrew_casks:
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/poit"]
           end
+
 # CLI-only release notes. changelog.paths is GoReleaser Pro only, so filter
-# on the commit message convention instead: "feat(cli): ..." / "fix: [cli] ...".
+# on the scope tag .githooks/commit-msg enforces: (cli), [cli], (app,cli), ...
 changelog:
   filters:
     include:
-      - '\(cli\)'
-      - '\[cli\]'
+      - '[(\[]([^)\]]*[, ])?cli([, ][^)\]]*)?[)\]]'

@@ -1,0 +1,32 @@
+#!/bin/sh
+# Commits touching apps/, cli/ or infra/ must tag the subject with the
+# matching scope: app / cli / infra, as "(scope)" or "[scope]", several
+# comma-separated for cross-cutting changes, e.g.
+#   feat(cli): ...   fix: [app] ...   fix(app,cli): ...
+# cli/poit/.goreleaser.yml's changelog filter matches the same shape to keep
+# the CLI release notes CLI-only.
+#
+# ponytail: checks staged files only, so `git commit --amend` with nothing
+# newly staged isn't checked. Compare against HEAD^ if that matters.
+
+subject=$(head -n 1 "$1")
+
+case "$subject" in
+  Merge*) exit 0 ;;
+esac
+
+staged=$(git diff --cached --name-only)
+missing=""
+for pair in apps:app cli:cli infra:infra; do
+  dir=${pair%%:*}
+  scope=${pair#*:}
+  printf '%s\n' "$staged" | grep -q "^$dir/" || continue
+  printf '%s\n' "$subject" | grep -qE "[([]([^])]*[, ])?$scope([, ][^])]*)?[])]" && continue
+  missing="$missing $scope"
+done
+
+if [ -n "$missing" ]; then
+  echo "commit-msg: 件名にスコープがありません:$missing" >&2
+  echo "  例: feat(cli): ... / fix: [app] ... / fix(app,cli): ..." >&2
+  exit 1
+fi

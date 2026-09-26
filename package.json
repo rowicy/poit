@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "pnpm --filter poit-app dev",
     "build": "pnpm --filter poit-app build",
-    "typecheck": "pnpm --filter poit-app typecheck"
+    "typecheck": "pnpm --filter poit-app typecheck",
+    "prepare": "git config core.hooksPath .githooks"
   }
 }
