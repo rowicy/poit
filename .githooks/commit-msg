@@ -9,7 +9,15 @@
 # ponytail: checks staged files only, so `git commit --amend` with nothing
 # newly staged isn't checked. Compare against HEAD^ if that matters.
 
-subject=$(head -n 1 "$1")
+COMMIT_MSG_FILE=$1
+
+# --- Co-authored-by: 行を除外する処理 ---
+TEMP_FILE=$(mktemp)
+grep -iv '^Co-authored-by:' "$COMMIT_MSG_FILE" > "$TEMP_FILE"
+mv "$TEMP_FILE" "$COMMIT_MSG_FILE"
+# ----------------------------------------
+
+subject=$(head -n 1 "$COMMIT_MSG_FILE")
 
 case "$subject" in
   Merge*) exit 0 ;;
