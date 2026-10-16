@@ -295,6 +295,32 @@ describe("poit API security", () => {
       expect(viaSuffix.headers.get("content-type")).toBe(viaPrefix.headers.get("content-type"));
     });
 
+    it("serves an html artifact's raw body in an opaque origin, not this one", async () => {
+      await createArtifact("alice@example.com", {
+        content: "<html><body><script>fetch('/api/v1/artifacts')</script></body></html>",
+        visibility: "public",
+        slug: "alice-rawtext-html-1",
+      });
+
+      const res = await anon("/artifact/raw/alice-rawtext-html-1");
+      expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+      expect(res.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    });
+
+    it("sends the same safety headers on the private raw path", async () => {
+      await createArtifact("alice@example.com", {
+        content: "<html><body>private</body></html>",
+        visibility: "private",
+        slug: "alice-rawtext-html-2",
+      });
+
+      const res = await authed("alice@example.com", "/artifact/raw/alice-rawtext-html-2");
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    });
+
     it("a PUT by the owner invalidates the raw-text cache entry (no stale content served)", async () => {
       await createArtifact("alice@example.com", {
         content: "# original",
