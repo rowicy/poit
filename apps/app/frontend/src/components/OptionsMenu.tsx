@@ -183,7 +183,7 @@ const OptionsMenu: Component<OptionsMenuProps> = (props) => {
           <Show when={submenu() === "visibility"}>
             <div class="options-submenu">
               <button type="button" classList={{ active: props.visibility === "private" }} onClick={() => props.onVisibilityChange("private")}>
-                プライベート (rowicy内) {props.visibility === "private" ? "✓" : ""}
+                プライベート (自分のみ) {props.visibility === "private" ? "✓" : ""}
               </button>
               <button type="button" classList={{ active: props.visibility === "public" }} onClick={() => props.onVisibilityChange("public")}>
                 パブリック (誰でも閲覧可) {props.visibility === "public" ? "✓" : ""}

@@ -9,10 +9,6 @@ export interface ArtifactRowProps {
   onSettingsChange: (id: string, patch: { visibility?: Visibility; persist?: boolean; mime?: ArtifactMime }) => void;
 }
 
-function visibilityLabel(v: Visibility): string {
-  return v === "public" ? "公開" : "非公開";
-}
-
 const COPY_FLASH_MS = 1500;
 
 const ArtifactRow: Component<ArtifactRowProps> = (props) => {
@@ -60,7 +56,20 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
           {props.artifact.excerpt && <span class="artifact-excerpt">{props.artifact.excerpt}</span>}
         </span>
         <span class="badge">
-          {props.artifact.mime} · {visibilityLabel(props.artifact.visibility)}
+          {props.artifact.mime}
+          {/* Only private is marked. Public needs no badge: it's the state a
+              shared link already implies, and a row with no lock reads as
+              "anyone with the URL can open this" without extra wording. */}
+          {props.artifact.visibility === "private" && (
+            <>
+              {" · "}
+              <svg class="badge-lock" viewBox="0 0 24 24" width="12" height="12" fill="none" role="img" aria-label="非公開">
+                <title>非公開</title>
+                <rect x="4" y="10.5" width="16" height="10.5" rx="2" stroke="currentColor" stroke-width="1.6" />
+                <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+            </>
+          )}
           {props.artifact.persist ? " · 永続" : ""}
         </span>
       </a>

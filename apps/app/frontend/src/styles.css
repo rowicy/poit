@@ -125,6 +125,10 @@ textarea {
   padding: 0.125rem 0.625rem;
 }
 
+.badge-lock {
+  vertical-align: -0.15em;
+}
+
 .hint {
   display: block;
   color: var(--muted-foreground);
