@@ -82,8 +82,13 @@ function jsonCacheKey(origin: string, id: string): Request {
 
 // /artifact/<id>/raw and /artifact/raw/<id> are aliases for the same
 // handler/response, so they share one cache entry.
+//
+// The "v2" suffix abandons every entry cached before RAW_SAFETY_HEADERS
+// existed: those were stored with s-maxage=31536000, so without a new key
+// an edge could keep serving a header-less html artifact for a year. Bump
+// it again if the headers below ever change.
 function rawTextCacheKey(origin: string, id: string): Request {
-  return new Request(`${origin}/artifact/raw/${id}`);
+  return new Request(`${origin}/artifact/raw/${id}?v2`);
 }
 
 function purgeArtifactCaches(ctx: ExecutionContext, origin: string, id: string): void {
@@ -95,6 +100,23 @@ const RAW_TEXT_CONTENT_TYPES: Record<ArtifactMeta["mime"], string> = {
   md: "text/markdown; charset=utf-8",
   html: "text/html; charset=utf-8",
   txt: "text/plain; charset=utf-8",
+};
+
+// An html artifact's raw body is served as text/html on this very origin, so
+// without these a shared artifact's own <script> would run with the viewer's
+// Cloudflare Access session: same-origin fetch("/api/v1/...") carries the
+// CF_Authorization cookie, which is enough to list, create and delete that
+// viewer's artifacts. "sandbox allow-scripts" (no allow-same-origin) drops
+// the document into an opaque origin instead - scripts still run, but the
+// cookie, the API and localStorage are all out of reach. This mirrors what
+// the SPA's own viewer already does with <iframe sandbox="allow-scripts">
+// (see frontend/src/pages/Artifact.tsx).
+//
+// Applied to md/txt too: they are not an XSS vector, but one set of headers
+// on every raw response is one less branch to get wrong.
+const RAW_SAFETY_HEADERS = {
+  "content-security-policy": "sandbox allow-scripts",
+  "x-content-type-options": "nosniff",
 };
 
 type ReadableArtifact =
@@ -309,11 +331,17 @@ async function handleArtifactRawText(
   const contentType = RAW_TEXT_CONTENT_TYPES[result.meta.mime];
 
   if (result.meta.visibility === "private") {
-    return new Response(result.content, { headers: { "content-type": contentType, ...NO_STORE } });
+    return new Response(result.content, {
+      headers: { "content-type": contentType, ...RAW_SAFETY_HEADERS, ...NO_STORE },
+    });
   }
 
   const response = new Response(result.content, {
-    headers: { "content-type": contentType, "cache-control": "public, max-age=60, s-maxage=31536000" },
+    headers: {
+      "content-type": contentType,
+      ...RAW_SAFETY_HEADERS,
+      "cache-control": "public, max-age=60, s-maxage=31536000",
+    },
   });
   ctx.waitUntil(cache.put(cacheKey, response.clone()));
   return response;
