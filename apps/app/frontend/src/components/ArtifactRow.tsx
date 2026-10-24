@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, type Component } from "solid-js";
 import { getArtifactJson, type ArtifactMeta, type ArtifactMime, type Visibility } from "../lib/api";
+import { expiryWarning } from "../lib/expiry";
 import { copyToClipboard } from "../lib/clipboard";
 import OptionsMenu from "./OptionsMenu";
 
@@ -15,6 +16,8 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [copied, setCopied] = createSignal<"content" | "url" | null>(null);
   let rootRef: HTMLDivElement | undefined;
+
+  const warning = () => expiryWarning(props.artifact);
 
   function onDocumentClick(e: MouseEvent) {
     if (rootRef && !rootRef.contains(e.target as Node)) setMenuOpen(false);
@@ -55,18 +58,25 @@ const ArtifactRow: Component<ArtifactRowProps> = (props) => {
           <span class="artifact-title">{props.artifact.title || props.artifact.filename}</span>
           {props.artifact.excerpt && <span class="artifact-excerpt">{props.artifact.excerpt}</span>}
         </span>
+        {warning() && (
+          <span class="badge badge-expiry">
+            <span aria-hidden="true">⚠ </span>
+            {warning()}
+          </span>
+        )}
         <span class="badge">
           {props.artifact.mime}
-          {/* Only private is marked. Public needs no badge: it's the state a
-              shared link already implies, and a row with no lock reads as
-              "anyone with the URL can open this" without extra wording. */}
-          {props.artifact.visibility === "private" && (
+          {/* Only public is marked. Private is this app's default and the
+              safe state; the globe is there to catch the eye on the rows
+              anyone with the URL can open. */}
+          {props.artifact.visibility === "public" && (
             <>
               {" · "}
-              <svg class="badge-lock" viewBox="0 0 24 24" width="12" height="12" fill="none" role="img" aria-label="非公開">
-                <title>非公開</title>
-                <rect x="4" y="10.5" width="16" height="10.5" rx="2" stroke="currentColor" stroke-width="1.6" />
-                <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              <svg class="badge-globe" viewBox="0 0 24 24" width="12" height="12" fill="none" role="img" aria-label="公開">
+                <title>公開</title>
+                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
+                <path d="M3 12h18" stroke="currentColor" stroke-width="1.6" />
+                <path d="M12 3c2.4 2.6 2.4 15.4 0 18c-2.4-2.6-2.4-15.4 0-18Z" stroke="currentColor" stroke-width="1.6" />
               </svg>
             </>
           )}
