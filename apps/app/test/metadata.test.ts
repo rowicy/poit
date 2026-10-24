@@ -65,6 +65,19 @@ describe("extractInfo markdown", () => {
   });
 });
 
+describe("extractInfo txt", () => {
+  it("uses the leading non-empty lines as the excerpt, with no title", async () => {
+    const info = await extractInfo("txt", "\n\n  one  \n\ntwo\n");
+    expect(info.title).toBeUndefined();
+    expect(info.excerpt).toBe("one two");
+  });
+
+  it("bounds the excerpt in UTF-8 bytes for CJK content", async () => {
+    const info = await extractInfo("txt", "\u3042".repeat(1000));
+    expect(byteLength(info.excerpt!)).toBeLessThanOrEqual(240);
+  });
+});
+
 describe("truncateUtf8", () => {
   it("never splits a multi-byte character", () => {
     const s = "あ".repeat(100);

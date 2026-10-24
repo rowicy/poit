@@ -146,8 +146,28 @@ async function extractHtmlInfo(html: string): Promise<ExtractedInfo> {
   };
 }
 
+/**
+ * Anything else (txt): no title - the row falls back to the filename -
+ * and the excerpt is the leading non-empty lines joined with spaces.
+ */
+function extractTextInfo(content: string): ExtractedInfo {
+  const bodyParts: string[] = [];
+  let bodyLength = 0;
+
+  for (const line of content.split(/\r?\n/)) {
+    if (bodyLength >= EXCERPT_MAX_BYTES) break;
+    const trimmed = line.trim();
+    if (trimmed) {
+      bodyParts.push(trimmed);
+      bodyLength += trimmed.length + 1;
+    }
+  }
+
+  return { excerpt: truncateUtf8(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined };
+}
+
 export async function extractInfo(mime: ArtifactMime, content: string): Promise<ExtractedInfo> {
   if (mime === "md") return extractMarkdownInfo(content);
   if (mime === "html") return extractHtmlInfo(content);
-  return {};
+  return extractTextInfo(content);
 }
