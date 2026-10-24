@@ -98,7 +98,7 @@ resource "cloudflare_zero_trust_access_application" "shell" {
   account_id       = var.cloudflare_account_id
   name             = "poit-shell"
   type             = "self_hosted"
-  session_duration = "24h"
+  session_duration = "48h"
 
   destinations = [
     { uri = "${local.hostname}/" },
