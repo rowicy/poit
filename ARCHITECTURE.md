@@ -13,12 +13,12 @@ md/html/txt を共有するアプリ。`apps/`, `cli/`, `infra/` の3つが1つ�
 - **apps/app/frontend** — Solid.js + Vite製SPAのソース。`apps/app/public`(Terraformが参照する静的アセットdir)にビルドする。
 - **apps/app/wasm/filekind** — mime判定ライブラリをブラウザ向けにGo-WASMビルドするためのGoソース(実行はしない、ビルド専用モジュール)。
 - **cli/poit** — Go製CLI。同じ `/api/v1/artifact` APIを、ブラウザログイン(`cmd/auth.go`、cloudflaredと同じtransferフロー)で得た各ユーザーのAccess JWT(`Cf-Access-Jwt-Assertion` ヘッダ)で叩く。
-- **infra** — Terraform。Worker本体(コード/静的アセット/バインディング/カスタムドメイン/cron)、R2、KV、Access Application/Policyをすべて管理。`wrangler deploy`は使わず、`terraform apply`が唯一のデプロイ手段(mainへのマージで `.github/workflows/infra.yml` が実行)。
+- **infra** — Terraform。Worker本体(コード/静的アセット/バインディング/カスタムドメイン/cron)、R2、KV、Access Application/Policyをすべて管理(例外はログイン方法=GitHubのIdPで、これだけはZero Trustダッシュボード管理。OAuth appのclient_secretをtfvars・CI secrets・R2のstateファイルに置かないため。`main.tf` は `cloudflare_zero_trust_access_identity_providers` data sourceから `type == "github"` で解決している)。`wrangler deploy`は使わず、`terraform apply`が唯一のデプロイ手段(mainへのマージで `.github/workflows/infra.yml` が実行)。
 
 ## 三者間の契約(ここが壊れるとクロスカッティングなバグになる)
 
 1. **APIコントラクト**: `apps/app/src/index.ts` の `ArtifactWriteBody`(content/filename/slug/visibility/persist)と、`cli/poit/cmd/client.go` の `artifactRequest` struct、`apps/app/frontend/src/lib/api.ts` の `createArtifact`/`updateArtifact` は同じJSON形状でなければならない。どれか1つだけ変更すると、他が動かなくなる。
-2. **認証**: CLIは `Cf-Access-Jwt-Assertion` ヘッダ(`~/.poit/access_token.jwt` にキャッシュ)、SPAは `CF_Authorization` Cookie。どちらも `infra/main.tf` の `cloudflare_zero_trust_access_policy.members_or_cli_allow`(Cloudflareアカウントのメンバー)でしか通らない。CLIは `cmd/auth.go` の `accessAppAUD` に `shell` アプリのaudを埋め込んでいるので、`shell` を作り直したら更新が必要。Access Applicationを分割すると(過去に実際に起きた `Load failed` バグ)、SPAのfetch()が壊れる。
+2. **認証**: CLIは `Cf-Access-Jwt-Assertion` ヘッダ(`~/.poit/access_token.jwt` にキャッシュ)、SPAは `CF_Authorization` Cookie。どちらも `infra/main.tf` の `cloudflare_zero_trust_access_policy.members_or_cli_allow`(rowicy GitHub orgのメンバー)でしか通らない。CLIは `cmd/auth.go` の `accessAppAUD` に `shell` アプリのaudを埋め込んでいるので、`shell` を作り直したら更新が必要。Access Applicationを分割すると(過去に実際に起きた `Load failed` バグ)、SPAのfetch()が壊れる。アーティファクトの所有者判定は `apps/app/src/index.ts` での `identity.email` 完全一致なので、ログイン方法を差し替えてユーザーのemailが変わると、そのユーザーの既存アーティファクトが一覧から消える(KV上のownerは作成時のemailを焼き込んだまま)。IdPを変えるときは新旧でemailが一致することを先に確認すること。
 3. **デフォルトTTL(90日)は2箇所で値を合わせる必要がある**:
    - `apps/app/src/store.ts` の `DEFAULT_TTL_SECONDS`
    - `infra/main.tf` の `cloudflare_r2_bucket_lifecycle` の `max_age`
