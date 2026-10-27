@@ -1226,13 +1226,3 @@ textarea {
     transform: rotate(360deg);
   }
 }
-
-.guide-list {
-  margin: 0;
-  padding-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-  font-size: 0.875rem;
-  line-height: 1.5;
-}

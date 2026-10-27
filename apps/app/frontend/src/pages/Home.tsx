@@ -1,4 +1,14 @@
-import { createSignal, createEffect, createMemo, createResource, For, Show, onCleanup, type Component } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  createMemo,
+  createResource,
+  lazy,
+  For,
+  Show,
+  onCleanup,
+  type Component,
+} from "solid-js";
 import { createStore } from "solid-js/store";
 import {
   type ArtifactMeta,
@@ -13,7 +23,6 @@ import { detectMime } from "../lib/filekind";
 import { copyToClipboard } from "../lib/clipboard";
 import OptionsMenu from "../components/OptionsMenu";
 import ShareTrigger from "../components/ShareTrigger";
-import GuideModal from "../components/GuideModal";
 import Spinner from "../components/Spinner";
 import ArtifactRow from "../components/ArtifactRow";
 import FilterMenu, { type ArtifactFilters } from "../components/FilterMenu";
@@ -23,6 +32,10 @@ type Status = { kind: "error" | "success"; message: string; url?: string } | nul
 // Keep in sync with apps/app/src/index.ts's SLUG_PATTERN and
 // cli/poit/cmd/share.go's slugPattern.
 const SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
+
+// The tour spotlights real DOM, so it ships its own JS and CSS; keep it out
+// of the initial bundle and fetch that chunk only when 使い方 is clicked.
+const GuideTour = lazy(() => import("../components/GuideTour"));
 
 const Home: Component = () => {
   const [initial] = createResource(async () => (await listArtifacts()).artifacts);
@@ -227,7 +240,7 @@ const Home: Component = () => {
       </section>
 
       <Show when={guideOpen()}>
-        <GuideModal onClose={() => setGuideOpen(false)} />
+        <GuideTour onClose={() => setGuideOpen(false)} />
       </Show>
     </div>
   );

@@ -1,0 +1,96 @@
+/* Loaded as part of the GuideTour async chunk - never on a normal page view. */
+
+.guide-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+/* Steps with no target (or whose target isn't on the page) dim everything. */
+.guide-dim {
+  position: fixed;
+  inset: 0;
+  background: rgba(14, 23, 42, 0.55);
+}
+
+/* The dimming is this element's own outward shadow, so the rect it covers
+   stays a transparent hole over the real DOM - no clip-path, no clone. */
+.guide-hole {
+  position: fixed;
+  border-radius: calc(var(--radius) + 0.25rem);
+  box-shadow: 0 0 0 9999px rgba(14, 23, 42, 0.55);
+  outline: 2px solid var(--primary-foreground);
+  pointer-events: none;
+  transition: top 0.18s ease, left 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+
+.guide-pop {
+  position: fixed;
+  max-width: 22rem;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(14, 23, 42, 0.25);
+  padding: 1rem 1.25rem 1.125rem;
+  text-align: left;
+}
+
+.guide-count {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.guide-pop h2 {
+  margin: 0.125rem 0 0.5rem;
+  font-size: 1.0625rem;
+}
+
+.guide-body {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.guide-body code {
+  background: var(--muted);
+  border-radius: 0.25rem;
+  padding: 0.0625rem 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.guide-url {
+  display: block;
+  margin-top: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  background: var(--muted);
+  border-radius: calc(var(--radius) - 0.125rem);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.guide-url-raw {
+  color: var(--destructive);
+  font-weight: 700;
+}
+
+.guide-note {
+  display: block;
+  margin-top: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.guide-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.guide-nav-spacer {
+  flex: 1;
+}
