@@ -34,6 +34,21 @@ provider "cloudflare" {
 
 locals {
   hostname = "poit.rowicy.com"
+
+  # Resolved by type instead of hardcoding the UUID, so recreating the login
+  # method in the dashboard doesn't strand a stale id in the policy below.
+  github_idp_id = one([
+    for p in data.cloudflare_zero_trust_access_identity_providers.all.result :
+    p.id if p.type == "github"
+  ])
+}
+
+# The GitHub login method itself is created in the Zero Trust dashboard, not
+# here: its OAuth app client_secret would otherwise have to live in tfvars, in
+# CI secrets and in the R2 state file. Everything that *uses* it stays in
+# Terraform.
+data "cloudflare_zero_trust_access_identity_providers" "all" {
+  account_id = var.cloudflare_account_id
 }
 
 resource "cloudflare_r2_bucket" "artifacts" {
@@ -71,9 +86,13 @@ resource "cloudflare_zero_trust_access_policy" "members_or_cli_allow" {
   decision   = "allow"
 
   include = [
-    # account_id omitted = members of this account. The "cloudflare" login
-    # method also has restrict_to_account_members on (set in the dashboard).
-    { cloudflare_account_member = {} },
+    # Membership of the rowicy GitHub org is the only way in - the previous
+    # cloudflare_account_member rule is gone, so inviting someone to the org
+    # is now the single place where access is granted. If GitHub auth ever
+    # breaks this locks everyone out of the app; recover by editing this
+    # policy in the Zero Trust dashboard (the Cloudflare account itself and
+    # the R2/KV data behind it are unaffected).
+    { github_organization = { identity_provider_id = local.github_idp_id, name = "rowicy" } },
   ]
 }
 
