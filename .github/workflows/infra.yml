@@ -61,6 +61,17 @@ jobs:
         working-directory: infra
       - run: terraform plan -input=false -out=tfplan
         working-directory: infra
+      # cloudflare_workers_script.startup_time_ms is a value Cloudflare
+      # re-measures on every upload, but the provider plans the prior state's
+      # value as known - so an apply whose upload actually landed still fails
+      # its post-apply consistency check whenever the measurement shifts by a
+      # millisecond ("Provider produced inconsistent result after apply").
+      # Upstream closed this NOT_PLANNED, and 5.28.1 still has it:
+      # https://github.com/cloudflare/terraform-provider-cloudflare/issues/7326
+      #
+      # So don't take apply's exit code as the verdict - ask whether the state
+      # converged. An empty plan means the upload landed and only the bogus
+      # check failed; a real failure leaves its diff pending and exits 2.
       - if: github.event_name != 'pull_request'
-        run: terraform apply -input=false tfplan
+        run: terraform apply -input=false tfplan || terraform plan -input=false -detailed-exitcode
         working-directory: infra
