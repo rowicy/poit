@@ -1,16 +1,47 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"unicode/utf8"
 
 	filekind "github.com/riiimparm/is-md-or-html-or-text"
 	"github.com/spf13/cobra"
 )
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
+
+const (
+	binarySniffLimit = 8 * 1024
+	nonTextRatio     = 0.05
+)
+
+// Go copy of apps/app/src/binary.ts's isBinaryContent - keep the two in sync.
+// poit only stores text (md/html/txt); posting a binary body used to come
+// back as a bare 500 from the Worker's KV write, so reject it locally and
+// never spend the round trip. The API re-checks and answers 400.
+func isBinaryContent(content []byte) bool {
+	sample := content
+	if len(sample) > binarySniffLimit {
+		sample = sample[:binarySniffLimit]
+	}
+	// git's and file(1)'s rule: a single NUL means binary, full stop.
+	if bytes.IndexByte(sample, 0) >= 0 {
+		return true
+	}
+	nonText := 0
+	// Ranging a string yields utf8.RuneError once per invalid byte, which is
+	// exactly what TextDecoder leaves as U+FFFD on the TypeScript side.
+	for _, r := range string(sample) {
+		if r == utf8.RuneError || r == 0x7f || (r < 0x20 && r != '\t' && r != '\n' && r != '\r') {
+			nonText++
+		}
+	}
+	return float64(nonText) > float64(len(sample))*nonTextRatio
+}
 
 func shareCmd() *cobra.Command {
 	var public bool
@@ -26,6 +57,10 @@ func shareCmd() *cobra.Command {
 			content, err := os.ReadFile(path)
 			if err != nil {
 				return fmt.Errorf("reading %s: %w", path, err)
+			}
+
+			if isBinaryContent(content) {
+				return fmt.Errorf("%s looks like a binary file; poit only shares text (txt/md/html)", path)
 			}
 
 			if slug != "" && !slugPattern.MatchString(slug) {

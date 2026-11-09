@@ -34,6 +34,8 @@ md/html/txt を共有するアプリ。`apps/`, `cli/`, `infra/` の3つが1つ�
    - `apps/app/src/mime.ts` — 同アルゴリズムをTypeScriptへ手動移植したもの(Worker内の権威判定。CloudflareがWASMのランタイムコンパイルを禁止しているためWASMを使えない)
    アルゴリズムを変更するときはこの3箇所すべてを直す。`apps/app/src/mime.ts` の冒頭コメントにこの制約を明記済み。
 9. **title/excerpt抽出 (`apps/app/src/metadata.ts`)** はPOST/PUT時にmime判定結果を使って動く。mime判定を変えると抽出結果も変わりうる。
+10. **バイナリ判定は2実装**: `apps/app/src/binary.ts` の `isBinaryContent`(Workerの権威判定と、SPAが同じファイルを直接importして使うクライアント判定を兼ねる)と、`cli/poit/cmd/share.go` の同名関数(Goの手動コピー)。閾値(`NON_TEXT_RATIO` / `nonTextRatio`)とNULの扱いを変えるなら両方直す。mime判定(契約8)とは別物で、Goライブラリ側には存在しないロジックなので `src/mime.ts` には置かないこと。
+11. **KVメタデータの1024バイト上限は「JSONエンコード後」で数える**。`metadata.ts` の `truncateForKvMetadata` がこの基準でtitle/excerpt/filenameを切り詰めている(制御文字は `\u00XX` で6バイト、`"` と `\` は2バイトに膨らむため、生のUTF-8バイト数で見積もると上限を超えて `kv.put()` が例外を投げ、APIは500を返す)。予算の単位を生バイトに戻さないこと。
 
 ## 既知の制約
 

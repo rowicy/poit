@@ -20,6 +20,9 @@ import {
   updateArtifact,
 } from "../lib/api";
 import { detectMime } from "../lib/filekind";
+// Same module the Worker validates with (apps/app/src/binary.ts), imported
+// directly so the client-side guard can never drift from the server's 400.
+import { isBinaryContent } from "../../../src/binary";
 import { copyToClipboard } from "../lib/clipboard";
 import OptionsMenu from "../components/OptionsMenu";
 import ShareTrigger from "../components/ShareTrigger";
@@ -76,6 +79,16 @@ const Home: Component = () => {
   async function submit(content: string, filename?: string) {
     if (!content.trim()) {
       setStatus({ kind: "error", message: "内容が空です" });
+      return;
+    }
+    // Covers both entry points at once: the file picker (where accept= only
+    // nudges, it does not block) and the clipboard. The API re-checks this
+    // and answers 400 - this is just the faster, localized message.
+    if (isBinaryContent(content)) {
+      setStatus({
+        kind: "error",
+        message: "テキストファイル(txt/md/htmlなど)のみ共有できます。バイナリファイルは共有できません",
+      });
       return;
     }
     const trimmedSlug = slug().trim();
@@ -184,7 +197,7 @@ const Home: Component = () => {
         </div>
       </header>
 
-      <input type="file" ref={fileInputRef} hidden onChange={onFileChosen} />
+      <input type="file" accept="text/*,.md,.markdown,.txt,.html,.htm" ref={fileInputRef} hidden onChange={onFileChosen} />
 
       <section class="share-field">
         <div class="share-stack">

@@ -1,5 +1,6 @@
+import { isBinaryContent } from "./binary";
 import { detectMime } from "./mime";
-import { extractInfo, truncateUtf8 } from "./metadata";
+import { extractInfo, truncateForKvMetadata } from "./metadata";
 import { verifyAccess } from "./access";
 import {
   type ArtifactMeta,
@@ -33,17 +34,19 @@ const NO_STORE = { "cache-control": "private, no-store" };
 // cli/poit/cmd/share.go's slugPattern.
 const SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
 const VALID_MIMES = new Set(["md", "html", "txt"]);
+const BINARY_REJECTED = "binary content is not supported (text/markdown/html only)";
 const MAX_CONTENT_LENGTH = 10 * 1024 * 1024; // 10MB, chars ~= bytes for typical md/html/txt uploads
 // Cloudflare KV caps a key's `metadata` option (ArtifactMeta, see
-// store.ts's putArtifact) at 1024 bytes total, measured in UTF-8 bytes;
-// filename is client-supplied and otherwise unbounded, so cap it
+// store.ts's putArtifact) at 1024 bytes total, measured on the serialized
+// JSON; filename is client-supplied and otherwise unbounded, so cap it
 // defensively too (title/excerpt are bounded the same way in metadata.ts).
-// Byte-safe (not a plain character slice) since a CJK filename can be up
-// to 3 UTF-8 bytes per JS string unit.
+// Measured in bytes, not JS string units, since a CJK filename can be up to
+// 3 UTF-8 bytes per unit - see truncateForKvMetadata for why the budget is
+// counted after JSON escaping rather than on the raw UTF-8 length.
 const MAX_FILENAME_BYTES = 160;
 
 function clampFilename(filename: string | undefined, fallback: string): string {
-  return truncateUtf8(filename || fallback, MAX_FILENAME_BYTES);
+  return truncateForKvMetadata(filename || fallback, MAX_FILENAME_BYTES);
 }
 
 // ponytail: per-isolate in-memory fixed-window counter, not shared across
@@ -184,6 +187,9 @@ async function handleApi(
     if (body.content.length > MAX_CONTENT_LENGTH) {
       return json({ error: "content too large" }, { status: 413 });
     }
+    if (isBinaryContent(body.content)) {
+      return json({ error: BINARY_REJECTED }, { status: 400 });
+    }
 
     let id: string;
     if (body.slug !== undefined) {
@@ -244,6 +250,9 @@ async function handleApi(
       if (!body) return json({ error: "invalid JSON body" }, { status: 400 });
       if (typeof body.content === "string" && body.content.length > MAX_CONTENT_LENGTH) {
         return json({ error: "content too large" }, { status: 413 });
+      }
+      if (typeof body.content === "string" && isBinaryContent(body.content)) {
+        return json({ error: BINARY_REJECTED }, { status: 400 });
       }
 
       const content = typeof body.content === "string" && body.content ? body.content : existing.content;

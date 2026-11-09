@@ -8,6 +8,8 @@
 - HTML
 - text
 
+いずれもテキストファイルのみ。バイナリファイル(画像・PDF・zipなど)はSPA/CLI/APIのそれぞれで共有前に弾かれる。
+
 ## アップロードインターフェース
 
 - [poit.rowicy.com](https://poit.rowicy.com)
