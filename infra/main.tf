@@ -119,6 +119,18 @@ resource "cloudflare_zero_trust_access_application" "shell" {
   type             = "self_hosted"
   session_duration = "48h"
 
+  # Left unset, Access offers every login method on the account on the
+  # "Log in to poit-shell" page - including Cloudflare's own, which is a dead
+  # end here (the policy below only includes the rowicy GitHub org, so such a
+  # session is always denied) but still looks like a usable choice. Pin it to
+  # the one method that can actually succeed.
+  allowed_idps = [local.github_idp_id]
+
+  # With exactly one allowed method there is nothing to choose, so skip the
+  # picker page and send both the browser and the CLI's login flow straight
+  # to GitHub.
+  auto_redirect_to_identity = true
+
   destinations = [
     { uri = "${local.hostname}/" },
   ]
