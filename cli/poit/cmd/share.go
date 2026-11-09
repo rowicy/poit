@@ -10,6 +10,8 @@ import (
 
 	filekind "github.com/riiimparm/is-md-or-html-or-text"
 	"github.com/spf13/cobra"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
 )
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
@@ -18,6 +20,34 @@ const (
 	binarySniffLimit = 8 * 1024
 	nonTextRatio     = 0.05
 )
+
+// Go copy of apps/app/src/binary.ts's decodeTextFile - keep the two in sync.
+// Japanese text files from Windows are still commonly Shift_JIS (CP932), so
+// convert those to UTF-8 instead of rejecting them; every other encoding
+// stays a rejection (UTF-16 included - its NUL bytes are not valid in
+// either). The Worker cannot do this for us: the API carries `content` as an
+// already-decoded JSON string, so the lossy decode would already have
+// happened by the time it sees the request.
+//
+// ponytail: whatever is *valid* Shift_JIS is taken as Shift_JIS, so a (now
+// rare) EUC-JP file can come through as mojibake instead of being rejected.
+// Reach for a real encoding detector only if that actually shows up.
+func decodeTextFile(content []byte) ([]byte, bool) {
+	if utf8.Valid(content) {
+		// TextDecoder strips a leading BOM, so strip it here too - otherwise
+		// the SPA and the CLI would store different bytes for the same file,
+		// and a stray U+FEFF breaks e.g. markdown heading detection.
+		return bytes.TrimPrefix(content, []byte("\uFEFF")), true
+	}
+	decoded, _, err := transform.Bytes(japanese.ShiftJIS.NewDecoder(), content)
+	// Unlike TextDecoder's fatal mode the decoder substitutes U+FFFD rather
+	// than failing, so an unmappable byte shows up in the output, not in err.
+	// Shift_JIS has no mapping *to* U+FFFD, so finding one means bad input.
+	if err != nil || bytes.ContainsRune(decoded, utf8.RuneError) {
+		return nil, false
+	}
+	return decoded, true
+}
 
 // Go copy of apps/app/src/binary.ts's isBinaryContent - keep the two in sync.
 // poit only stores text (md/html/txt); posting a binary body used to come
@@ -59,8 +89,9 @@ func shareCmd() *cobra.Command {
 				return fmt.Errorf("reading %s: %w", path, err)
 			}
 
-			if isBinaryContent(content) {
-				return fmt.Errorf("%s looks like a binary file; poit only shares text (txt/md/html)", path)
+			content, ok := decodeTextFile(content)
+			if !ok || isBinaryContent(content) {
+				return fmt.Errorf("%s looks like a binary file; poit only shares text (txt/md/html, UTF-8 or Shift_JIS)", path)
 			}
 
 			if slug != "" && !slugPattern.MatchString(slug) {

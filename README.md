@@ -10,6 +10,8 @@
 
 いずれもテキストファイルのみ。バイナリファイル(画像・PDF・zipなど)はSPA/CLI/APIのそれぞれで共有前に弾かれる。
 
+文字コードはUTF-8とShift_JIS(CP932)に対応(Shift_JISはアップロード時にUTF-8へ変換して保存)。それ以外の文字コード(UTF-16・EUC-JPなど)はバイナリ扱いで弾かれる。
+
 ## アップロードインターフェース
 
 - [poit.rowicy.com](https://poit.rowicy.com)
