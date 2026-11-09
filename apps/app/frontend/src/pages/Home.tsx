@@ -20,6 +20,9 @@ import {
   updateArtifact,
 } from "../lib/api";
 import { detectMime } from "../lib/filekind";
+// Same module the Worker validates with (apps/app/src/binary.ts), imported
+// directly so the client-side guard can never drift from the server's 400.
+import { decodeTextFile, isBinaryContent } from "../../../src/binary";
 import { copyToClipboard } from "../lib/clipboard";
 import OptionsMenu from "../components/OptionsMenu";
 import ShareTrigger from "../components/ShareTrigger";
@@ -32,6 +35,9 @@ type Status = { kind: "error" | "success"; message: string; url?: string } | nul
 // Keep in sync with apps/app/src/index.ts's SLUG_PATTERN and
 // cli/poit/cmd/share.go's slugPattern.
 const SLUG_PATTERN = /^[a-z0-9_-]{1,64}$/;
+
+const BINARY_MESSAGE =
+  "テキストファイル(txt/md/htmlなど、UTF-8かShift_JIS)のみ共有できます。バイナリファイルは共有できません";
 
 // The tour spotlights real DOM, so it ships its own JS and CSS; keep it out
 // of the initial bundle and fetch that chunk only when 使い方 is clicked.
@@ -76,6 +82,14 @@ const Home: Component = () => {
   async function submit(content: string, filename?: string) {
     if (!content.trim()) {
       setStatus({ kind: "error", message: "内容が空です" });
+      return;
+    }
+    // Backstop for both entry points: the clipboard (which can only ever
+    // hand over text, but that text can still be pasted junk) and a file
+    // that decoded cleanly yet is binary all the same. The API re-checks
+    // this and answers 400 - this is just the faster, localized message.
+    if (isBinaryContent(content)) {
+      setStatus({ kind: "error", message: BINARY_MESSAGE });
       return;
     }
     const trimmedSlug = slug().trim();
@@ -126,7 +140,17 @@ const Home: Component = () => {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = "";
     if (!file) return;
-    await submit(await file.text(), file.name);
+    // Not file.text(): that hardcodes UTF-8 and silently turns every other
+    // encoding into U+FFFD soup. Decoding the raw bytes ourselves is what
+    // lets a Shift_JIS file be converted instead of rejected - and the
+    // Worker cannot do it for us, since the API only ever receives an
+    // already-decoded string (see src/binary.ts).
+    const content = decodeTextFile(await file.arrayBuffer());
+    if (content === null) {
+      setStatus({ kind: "error", message: BINARY_MESSAGE });
+      return;
+    }
+    await submit(content, file.name);
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -184,7 +208,7 @@ const Home: Component = () => {
         </div>
       </header>
 
-      <input type="file" ref={fileInputRef} hidden onChange={onFileChosen} />
+      <input type="file" accept="text/*,.md,.markdown,.txt,.html,.htm" ref={fileInputRef} hidden onChange={onFileChosen} />
 
       <section class="share-field">
         <div class="share-stack">

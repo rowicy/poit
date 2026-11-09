@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractInfo, truncateUtf8 } from "../src/metadata";
+import { extractInfo, truncateForKvMetadata } from "../src/metadata";
 
 const byteLength = (s: string) => new TextEncoder().encode(s).length;
 
@@ -78,16 +78,16 @@ describe("extractInfo txt", () => {
   });
 });
 
-describe("truncateUtf8", () => {
+describe("truncateForKvMetadata", () => {
   it("never splits a multi-byte character", () => {
     const s = "あ".repeat(100);
-    const truncated = truncateUtf8(s, 10);
+    const truncated = truncateForKvMetadata(s, 10);
     // 10 bytes / 3 bytes-per-char = 3 whole characters, no partial/mangled one
     expect(truncated).toBe("あああ");
     expect(byteLength(truncated)).toBeLessThanOrEqual(10);
   });
 
   it("is a no-op when already within budget", () => {
-    expect(truncateUtf8("hello", 100)).toBe("hello");
+    expect(truncateForKvMetadata("hello", 100)).toBe("hello");
   });
 });

@@ -396,6 +396,30 @@ describe("poit API security", () => {
       expect(res.status).toBe(413);
     });
 
+    it("rejects a binary body with 400 instead of blowing up KV's metadata cap (500)", async () => {
+      // A PNG as File.text() hands it over: invalid bytes become U+FFFD and
+      // the NULs survive. Before the guard this reached kv.put(), whose
+      // metadata option is capped at 1024 bytes of *serialized JSON* (every
+      // control character escapes to a 6-byte \u00XX), and the throw came
+      // back as a bare 500.
+      const bytes = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+      for (let i = 8; i < 4096; i++) bytes.push(i % 7 === 0 ? 0x00 : (i * 31) % 256);
+      const content = new TextDecoder().decode(new Uint8Array(bytes));
+
+      const created = await createArtifact("alice@example.com", { content, slug: "binary-1", filename: "x.png" });
+      expect(created.status).toBe(400);
+      expect(created.json.error).toMatch(/binary/);
+    });
+
+    it("stores a quote/control-heavy text body without exceeding KV's metadata cap", async () => {
+      // Passes the binary sniff (under the non-text ratio) but each `"` costs
+      // 2 JSON bytes and each \u0001 costs 6, so a raw-UTF-8 budget for
+      // title/excerpt would still overflow the 1024-byte cap and 500.
+      const content = `# ${'"'.repeat(400)}\n${'"'.repeat(2000)}\u0001\n`;
+      const created = await createArtifact("alice@example.com", { content, slug: "quote-heavy-1" });
+      expect(created.status).toBe(201);
+    });
+
     it("throttles a burst of write requests from the same identity", async () => {
       const statuses: number[] = [];
       for (let i = 0; i < 40; i++) {

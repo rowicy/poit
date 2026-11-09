@@ -10,21 +10,49 @@ export interface ExtractedInfo {
 // These budgets are BYTES, not JS string length: a naive `.slice(0, N)`
 // character cap still lets a CJK title/excerpt (this app's users are
 // Japanese-speaking) blow past 1024 bytes, since one JS string unit can be
-// up to 3 UTF-8 bytes. See truncateUtf8 below.
+// up to 3 UTF-8 bytes. See truncateForKvMetadata below (the real cap is the
+// JSON-encoded length, which is what KV measures).
 const EXCERPT_MAX_BYTES = 240;
 const TITLE_MAX_BYTES = 160;
 
 /**
- * Truncates `str` to at most `maxBytes` when UTF-8 encoded, without
- * splitting a multi-byte character. Backs off from the byte cut point while
- * it lands on a UTF-8 continuation byte (10xxxxxx).
+ * How many bytes `str` costs *inside a JSON string* - which is what KV
+ * actually measures the `metadata` option against, since store.ts serializes
+ * ArtifactMeta into it. JSON.stringify leaves non-ASCII alone, so for
+ * ordinary text (CJK included) this equals the UTF-8 length, but it escapes
+ * `"`/`\` to 2 bytes and every control character to 6 (`\u0000`).
  */
-export function truncateUtf8(str: string, maxBytes: number): string {
-  const bytes = new TextEncoder().encode(str);
-  if (bytes.length <= maxBytes) return str;
-  let end = maxBytes;
-  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
-  return new TextDecoder().decode(bytes.slice(0, end));
+function jsonByteLength(str: string): number {
+  return new TextEncoder().encode(JSON.stringify(str)).length - 2; // minus the surrounding quotes
+}
+
+/**
+ * Truncates `str` so that its JSON-encoded form fits in `maxBytes`, without
+ * splitting a character.
+ *
+ * The budget is JSON bytes rather than raw UTF-8 bytes because that is the
+ * budget KV enforces: a 240-byte run of control characters serializes to
+ * 1440 bytes of metadata, and the oversized kv.put() throws ("Metadata
+ * length of N exceeds limit of 1024") with no handler above it, so the API
+ * answers a bare 500. Binary uploads - the usual source of such runs - are
+ * rejected up front now (see binary.ts), but a text file can still carry a
+ * dense control-character or quote-heavy run into a title/excerpt, so the
+ * real cap is enforced here instead of being trusted upstream.
+ */
+export function truncateForKvMetadata(str: string, maxBytes: number): string {
+  if (jsonByteLength(str) <= maxBytes) return str;
+  let out = "";
+  let used = 0;
+  // Iterating a string yields whole code points, so a surrogate pair is
+  // never split. Bounded by maxBytes, not by input length - it stops as
+  // soon as the budget is full.
+  for (const ch of str) {
+    const cost = jsonByteLength(ch);
+    if (used + cost > maxBytes) break;
+    out += ch;
+    used += cost;
+  }
+  return out;
 }
 
 /**
@@ -39,7 +67,7 @@ function extractMarkdownInfo(content: string): ExtractedInfo {
   for (const line of content.split(/\r?\n/)) {
     const heading = line.match(/^ {0,3}#{1,6}\s+(.*)$/);
     if (heading) {
-      if (!title) title = truncateUtf8(heading[1].trim(), TITLE_MAX_BYTES);
+      if (!title) title = truncateForKvMetadata(heading[1].trim(), TITLE_MAX_BYTES);
       continue;
     }
     if (bodyLength >= EXCERPT_MAX_BYTES) continue;
@@ -52,7 +80,7 @@ function extractMarkdownInfo(content: string): ExtractedInfo {
 
   return {
     title,
-    excerpt: truncateUtf8(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined,
+    excerpt: truncateForKvMetadata(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined,
   };
 }
 
@@ -141,8 +169,8 @@ async function extractHtmlInfo(html: string): Promise<ExtractedInfo> {
   const firstHeading = [1, 2, 3, 4, 5, 6].map((l) => firstHeadingText[l]?.trim()).find((t) => !!t);
 
   return {
-    title: truncateUtf8(title.trim() || firstHeading || "", TITLE_MAX_BYTES) || undefined,
-    excerpt: truncateUtf8(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined,
+    title: truncateForKvMetadata(title.trim() || firstHeading || "", TITLE_MAX_BYTES) || undefined,
+    excerpt: truncateForKvMetadata(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined,
   };
 }
 
@@ -163,7 +191,7 @@ function extractTextInfo(content: string): ExtractedInfo {
     }
   }
 
-  return { excerpt: truncateUtf8(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined };
+  return { excerpt: truncateForKvMetadata(bodyParts.join(" "), EXCERPT_MAX_BYTES) || undefined };
 }
 
 export async function extractInfo(mime: ArtifactMime, content: string): Promise<ExtractedInfo> {

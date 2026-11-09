@@ -34,6 +34,9 @@ md/html/txt を共有するアプリ。`apps/`, `cli/`, `infra/` の3つが1つ�
    - `apps/app/src/mime.ts` — 同アルゴリズムをTypeScriptへ手動移植したもの(Worker内の権威判定。CloudflareがWASMのランタイムコンパイルを禁止しているためWASMを使えない)
    アルゴリズムを変更するときはこの3箇所すべてを直す。`apps/app/src/mime.ts` の冒頭コメントにこの制約を明記済み。
 9. **title/excerpt抽出 (`apps/app/src/metadata.ts`)** はPOST/PUT時にmime判定結果を使って動く。mime判定を変えると抽出結果も変わりうる。
+10. **バイナリ判定と文字コード変換は2実装**: `apps/app/src/binary.ts` と `cli/poit/cmd/share.go` に `isBinaryContent` / `decodeTextFile` が同名で存在する(前者はWorkerの権威判定とSPAのクライアント判定を兼ねる = SPAが同じファイルを直接importする。後者はGoの手動コピー)。閾値(`NON_TEXT_RATIO` / `nonTextRatio`)・NULの扱い・対応文字コード(UTF-8とShift_JISのみ、BOMは除去)を変えるなら両方直す。mime判定(契約8)とは別物で、Goライブラリ側には存在しないロジックなので `src/mime.ts` には置かないこと。
+10b. **文字コード変換はアップロード地点でしかできない**。APIコントラクト(契約1)の `content` はJSON文字列、つまり**デコード済み**なので、Workerがリクエストを受け取った時点でShift_JISの情報は失われている(不正バイトはU+FFFDに潰れていて復元不能)。したがって変換はSPA(`Home.tsx` の `onFileChosen` が `file.text()` ではなく `file.arrayBuffer()` を読む)とCLI(`share.go`)の各入口に置き、Workerは `isBinaryContent` による最終防衛線だけを持つ。`content` をJSON文字列からbase64やバイナリボディに変えない限り、この非対称は解消できない。
+11. **KVメタデータの1024バイト上限は「JSONエンコード後」で数える**。`metadata.ts` の `truncateForKvMetadata` がこの基準でtitle/excerpt/filenameを切り詰めている(制御文字は `\u00XX` で6バイト、`"` と `\` は2バイトに膨らむため、生のUTF-8バイト数で見積もると上限を超えて `kv.put()` が例外を投げ、APIは500を返す)。予算の単位を生バイトに戻さないこと。
 
 ## 既知の制約
 
