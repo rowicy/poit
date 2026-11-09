@@ -40,6 +40,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter poit-app typecheck
       - run: pnpm --filter poit-app typecheck:frontend
+      # Workers-pool tests (API/mime/metadata/binary) and plain frontend
+      # tests run from separate vitest configs - see apps/app/vitest.config.ts
+      # and apps/app/frontend/vitest.config.ts.
+      - run: pnpm --filter poit-app test
+      - run: pnpm --filter poit-app test:frontend
       # Confirms the esbuild bundle infra/main.tf's cloudflare_workers_script
       # depends on actually builds; doesn't deploy anything (deploy is
       # `terraform apply`, run locally - see README.md).
@@ -57,4 +62,6 @@ jobs:
       - run: go build ./...
         working-directory: cli/poit
       - run: go vet ./...
+        working-directory: cli/poit
+      - run: go test ./...
         working-directory: cli/poit
