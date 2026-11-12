@@ -25,11 +25,16 @@ homebrew_casks:
       name: homebrew-tools
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/rowicy/poit"
+    # Empty desc fails `brew style` (Cask/Desc).
+    description: "Share Markdown, HTML, and text files"
+    # `install_steps` (GoReleaser >= 2.19) emits `postflight_steps`.
+    # `{{ .StagedPath }}` becomes Homebrew's `{{staged_path}}` token.
+    # No zap block: GoReleaser >= 2.20 emits `zap :not_required`.
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/poit"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/poit"]
           end
 
 # CLI-only release notes. changelog.paths is GoReleaser Pro only, so filter
