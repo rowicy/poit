@@ -23,7 +23,7 @@ jobs:
       - uses: goreleaser/goreleaser-action@v7.2.3
         with:
           distribution: goreleaser
-          version: "2.18.0"
+          version: "2.20.2"
           args: release --clean --config cli/poit/.goreleaser.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
